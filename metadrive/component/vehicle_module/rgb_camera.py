@@ -17,5 +17,6 @@ class RGBCamera(BaseCamera):
         cam = self.get_cam()
         lens = self.get_lens()
         cam.lookAt(0, 2.4, 1.3)
-        lens.setFov(60)
-        lens.setAspectRatio(2.0)
+        cam.setHpr(0, 0.8, 0)
+        lens.setFov(160)
+        lens.setAspectRatio(1.15)

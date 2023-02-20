@@ -2,6 +2,9 @@ import logging
 import sys
 import time
 from typing import Optional, Union, Tuple
+import zmq
+import numpy as np
+import struct
 
 import gltf
 from direct.gui.OnscreenImage import OnscreenImage
@@ -20,6 +23,8 @@ from metadrive.engine.core.physics_world import PhysicsWorld
 from metadrive.engine.core.sky_box import SkyBox
 from metadrive.engine.core.terrain import Terrain
 from metadrive.utils.utils import is_mac, setup_logger
+import lz4 as lz4
+
 
 
 def _suppress_warning():
@@ -92,6 +97,7 @@ class EngineCore(ShowBase.ShowBase):
 
         # Setup onscreen render
         if self.global_config["use_render"]:
+
             self.mode = RENDER_MODE_ONSCREEN
             # Warning it may cause memory leak, Pand3d Official has fixed this in their master branch.
             # You can enable it if your panda version is latest.
@@ -145,7 +151,10 @@ class EngineCore(ShowBase.ShowBase):
                 self.global_config["window_size"] = tuple([new_w, new_h])
                 from panda3d.core import WindowProperties
                 props = WindowProperties()
+                self.disableMouse()
+                props.setFixedSize(True)
                 props.setSize(self.global_config["window_size"][0], self.global_config["window_size"][1])
+                
                 self.win.requestProperties(props)
                 logging.warning(
                     "Since your screen is too small ({}, {}), we resize the window to {}.".format(
@@ -266,6 +275,81 @@ class EngineCore(ShowBase.ShowBase):
 
         # task manager
         self.taskMgr.remove('audioLoop')
+        if global_config["streamer"]:
+            if self.mode != RENDER_MODE_ONSCREEN:
+                print("Streamer only support onscreen mode! Starting anyway...")
+            self.start_streamer()
+            self.taskMgr.add(self.send_frame_buffer_direct, "streamer", sort=1, priority=1)
+
+    def send_frame_buffer(self):
+        # check if self.win exists yet
+        try:
+            data = self.win.getScreenshot().getRamImage()
+            try:
+                self.socket.send(data, zmq.NOBLOCK)
+            except zmq.error.Again:
+                print("metadrive/engine/core/engine_core: Dropping frame")
+            del data # explicit delete to free memory
+        except AttributeError:
+            return
+    
+    def send_frame_buffer_direct(self, task):
+        
+        # check if self.win exists yet
+        try:
+            data = self.win.getScreenshot().getRamImage()
+        except (AttributeError or AssertionError):
+            print("metadrive/engine/core/engine_core: No window")
+            return task.cont
+        #compressed_data = lz4.frame.compress(data)
+        # convert the bytes object to a mutable bytearray object
+        data = bytearray(data)
+        width = self.win.getXSize() # get the screen resolution
+        height = self.win.getYSize()
+        # remove the alpha channel of size width*height bytes
+        #data = data[:width * height * 3] # remove the alpha channel bytes
+        
+        # reverse the order of bytes in the data array in-place
+        #data.reverse()
+        
+        # pack the dimensions as a tuple
+        dim_data = struct.pack('ii', width, height)
+        # concatenate the dimensions and image data into a single byte array
+        data = dim_data + data
+        
+        try:
+            self.socket.send(data, zmq.NOBLOCK)
+        except zmq.error.Again:
+            print("metadrive/engine/core/engine_core: Dropping frame")
+        del data # explicit delete to free memory
+        
+            
+        return task.cont
+    
+
+    def close_streamer(self):
+        self.socket.close()
+        self.context.term()
+    
+    def start_streamer(self):
+        self.frame_id = 0
+        self.context = zmq.Context().instance()
+        self.context.setsockopt(zmq.IO_THREADS, 2)
+        self.socket = self.context.socket(zmq.PUSH)
+        self.socket.setsockopt(zmq.SNDBUF, 4194304)
+        
+        self.socket.bind(self.global_config["streamer_ipc"])
+        self.socket.set_hwm(5)
+    
+    def streamer(self, task):
+        if self.rk.frame % 5 == 0:
+            data = self.win.getScreenshot().getRamImage()
+            try:
+                self.socket.send(data, zmq.NOBLOCK)
+            except zmq.error.Again:
+                print("metadrive/engine/core/engine_core: Dropping frame")
+            del data # explicit delete to free memory
+            return task.cont
 
     def render_frame(self, text: Optional[Union[dict, str]] = None):
         """

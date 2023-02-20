@@ -9,8 +9,7 @@ from panda3d.core import PNMImage
 from metadrive.component.vehicle.base_vehicle import BaseVehicle
 from metadrive.constants import RENDER_MODE_NONE, DEFAULT_AGENT
 from metadrive.engine.base_engine import BaseEngine
-from metadrive.engine.engine_utils import initialize_engine, close_engine, \
-    engine_initialized, set_global_random_seed
+from metadrive.engine.engine_utils import initialize_engine, close_engine, engine_initialized, set_global_random_seed
 from metadrive.manager.agent_manager import AgentManager
 from metadrive.manager.record_manager import RecordManager
 from metadrive.manager.replay_manager import ReplayManager
@@ -35,6 +34,7 @@ BASE_DEFAULT_CONFIG = dict(
 
     # ===== Action =====
     manual_control=False,
+    openpilot_control=False,
     controller="keyboard",  # "joystick" or "keyboard"
     decision_repeat=5,
     discrete_action=False,
@@ -51,6 +51,8 @@ BASE_DEFAULT_CONFIG = dict(
     camera_dist=6.0,
     camera_pitch=None,  # degree
     camera_smooth=True,  # degree
+    camera_fov=80,
+    camera_aspect_ratio=1.3,
     prefer_track_agent=None,
     draw_map_resolution=1024,  # Drawing the map in a canvas of (x, x) pixels.
     top_down_camera_initial_x=0,
@@ -60,6 +62,9 @@ BASE_DEFAULT_CONFIG = dict(
 
     # ===== Vehicle =====
     vehicle_config=dict(
+        max_engine_force=1000.0,
+        max_brake_force=500.0,
+        wheel_friction=1.0,
         increment_steering=False,
         vehicle_model="default",
         show_navi_mark=True,
@@ -70,6 +75,8 @@ BASE_DEFAULT_CONFIG = dict(
         show_line_to_dest=False,
         show_line_to_navi_mark=False,
         use_special_color=False,
+        max_speed = 120,
+        max_steering = 40,
 
         # ===== use image =====
         image_source="rgb_camera",  # take effect when only when offscreen_render == True
@@ -113,7 +120,7 @@ BASE_DEFAULT_CONFIG = dict(
 
         # NOTE: rgb_clip will be modified by env level config when initialization
         rgb_clip=True,  # clip 0-255 to 0-1
-        stack_size=3,  # the number of timesteps for stacking image observation
+        stack_size=1,  # the number of timesteps for stacking image observation
         rgb_to_grayscale=False,
         gaussian_noise=0.0,
         dropout_prob=0.0,
@@ -137,6 +144,9 @@ BASE_DEFAULT_CONFIG = dict(
     pstats=False,
     # if need running in offscreen
     offscreen_render=False,
+
+    streamer=False,
+    streamer_ipc="ipc:///tmp/metadrive_window",
     # accelerate the lidar perception
     _disable_detector_mask=False,
     # clip rgb to (0, 1)

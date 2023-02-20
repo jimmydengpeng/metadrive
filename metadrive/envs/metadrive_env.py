@@ -24,6 +24,7 @@ METADRIVE_DEFAULT_CONFIG = dict(
     block_dist_config=PGBlockDistConfig,
     random_lane_width=False,
     random_lane_num=False,
+    mouse_look=True,
     map_config={
         BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_NUM,
         BaseMap.GENERATE_CONFIG: None,  # it can be a file path / block num / block ID sequence

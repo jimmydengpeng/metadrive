@@ -8,6 +8,7 @@ from metadrive.manager.base_manager import BaseManager
 from metadrive.policy.AI_protect_policy import AIProtectPolicy
 from metadrive.policy.env_input_policy import EnvInputPolicy
 from metadrive.policy.manual_control_policy import ManualControlPolicy
+from metadrive.policy.openpilot_control_policy import OpenpilotControlPolicy
 
 
 class AgentManager(BaseManager):
@@ -78,6 +79,8 @@ class AgentManager(BaseManager):
         if self.engine.global_config["manual_control"]:
             if self.engine.global_config.get("use_AI_protector", False):
                 policy = AIProtectPolicy
+            elif self.engine.global_config.get("openpilot_control", False):
+                policy = OpenpilotControlPolicy
             else:
                 policy = ManualControlPolicy
         else:

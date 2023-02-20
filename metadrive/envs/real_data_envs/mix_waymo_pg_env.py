@@ -40,6 +40,7 @@ MIX_WAYMO_PG_ENV_CONFIG = dict(
     block_num=1,  # block_num
     random_lane_width=False,
     random_lane_num=False,
+    mouse_look=True,
 
     # ===== PG Traffic =====
     traffic_density=0.2,

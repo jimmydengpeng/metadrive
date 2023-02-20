@@ -40,6 +40,8 @@ class MainCamera:
         self.camera_pitch = -engine.global_config["camera_pitch"] if engine.global_config["camera_pitch"
                                                                                           ] is not None else None
         self.camera_smooth = engine.global_config["camera_smooth"]
+        self.camera.node().getLens().setFov(engine.global_config["camera_fov"])
+        self.camera.node().getLens().setAspectRatio(engine.global_config["camera_aspect_ratio"])
         self.direction_running_mean = deque(maxlen=20 if self.camera_smooth else 1)
         self.world_light = self.engine.world_light  # light chases the chase camera, when not using global light
         self.inputs = InputState()
@@ -87,6 +89,8 @@ class MainCamera:
         self.move_into_window_timer = 0
         self._in_recover = False
         self._last_frame_has_mouse = False
+        
+        
 
     def set_bird_view_pos(self, position):
         if self.engine.task_manager.hasTaskNamed(self.TOP_DOWN_TASK_NAME):
@@ -129,7 +133,8 @@ class MainCamera:
         self._last_frame_has_mouse = self.has_mouse
 
     def _chase_task(self, vehicle, task):
-        self.update_mouse_info()
+        if self.engine.global_config["mouse_look"]:
+            self.update_mouse_info()
         self.chase_camera_height = self._update_height(self.chase_camera_height)
         chassis_pos = vehicle.chassis.get_pos()
         self.camera_queue.put(chassis_pos)
@@ -289,9 +294,9 @@ class MainCamera:
 
     def _update_height(self, height):
         if self.inputs.isSet("high"):
-            height += 1.0
+            height += 0.1
         if self.inputs.isSet("low"):
-            height -= 1.0
+            height -= 0.1
         return height
 
     def _wheel_down_height(self):

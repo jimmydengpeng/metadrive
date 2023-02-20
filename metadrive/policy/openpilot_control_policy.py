@@ -2,20 +2,28 @@ from metadrive.engine.core.manual_controller import KeyboardController, Steering
 from metadrive.engine.engine_utils import get_global_config
 from metadrive.examples import expert
 from metadrive.policy.env_input_policy import EnvInputPolicy
+import cereal.messaging as messaging
+
+import zmq
 
 
 
-class ManualControlPolicy(EnvInputPolicy):
+class OpenpilotControlPolicy(EnvInputPolicy):
     """
-    Control the current track vehicle
+    Control the current track vehicle with openpilot.
     """
     def __init__(self, obj, seed):
-        super(ManualControlPolicy, self).__init__(obj, seed)
+        super(OpenpilotControlPolicy, self).__init__(obj, seed)
         config = self.engine.global_config
-
+        self.sm = messaging.SubMaster(['carControl'])
+        self.gas_brake = 0.0
+        self.accel = 0.0
         if config["manual_control"] and config["use_render"]:
             self.engine.accept("t", self.toggle_takeover)
             self.engine.accept("e", self.toggle_cruise_engage)
+            self.engine.accept("arrow_up-up", self.increase_cruise_sp)
+            self.engine.accept("arrow_down-up", self.decrease_cruise_sp)
+            self.engine.accept("i", self.toggle_ignition)
             pygame_control = False
         elif config["manual_control"]:
             # Use pygame to accept key strike.
@@ -42,12 +50,21 @@ class ManualControlPolicy(EnvInputPolicy):
             self.controller = None
 
     def act(self, agent_id):
+        
 
         self.controller.process_others(takeover_callback=self.toggle_takeover)
 
         try:
             if self.engine.current_track_vehicle.expert_takeover:
-                return expert(self.engine.current_track_vehicle)
+                self.sm.update(0)
+                print("accel",self.sm['carControl'].actuators.accel)
+                print("steer",self.sm['carControl'].actuators.steer)
+               
+                self.gas_brake = self.sm['carControl'].actuators.accel
+                self.steer = self.sm['carControl'].actuators.steer
+                return self.steer, self.gas_brake
+                #else:
+                    #return 0, 0
         except (ValueError, AssertionError):
             # if observation doesn't match, fall back to manual control
             print("Current observation does not match the format that expert can accept.")
@@ -58,13 +75,32 @@ class ManualControlPolicy(EnvInputPolicy):
         if self.engine.global_config["manual_control"] and is_track_vehicle and not_in_native_bev:
             return self.controller.process_input(self.engine.current_track_vehicle)
         else:
-            return super(ManualControlPolicy, self).act(agent_id)
+            return super(TakeoverPolicy, self).act(agent_id)
 
     def toggle_takeover(self):
         if self.engine.current_track_vehicle is not None:
             self.engine.current_track_vehicle.expert_takeover = not self.engine.current_track_vehicle.expert_takeover
             print("The expert takeover is set to: ", self.engine.current_track_vehicle.expert_takeover)
     
+    def toggle_cruise_engage(self):
+        if self.engine.current_track_vehicle is not None:
+            self.engine.current_track_vehicle.cruise_engaged = not self.engine.current_track_vehicle.cruise_engaged
+            print("The cruise engage is set to: ", self.engine.current_track_vehicle.cruise_engaged)
+
+    def increase_cruise_sp(self):
+        if self.engine.current_track_vehicle is not None:
+            self.engine.current_track_vehicle.cruise_sp += 1
+            print("The cruise speed is set to: ", self.engine.current_track_vehicle.cruise_sp)
+    
+    def decrease_cruise_sp(self):
+        if self.engine.current_track_vehicle is not None:
+            self.engine.current_track_vehicle.cruise_sp -= 1
+            print("The cruise speed is set to: ", self.engine.current_track_vehicle.cruise_sp)
+    
+    def toggle_ignition(self):
+        if self.engine.current_track_vehicle is not None:
+            self.engine.current_track_vehicle.ignition = not self.engine.current_track_vehicle.ignition
+            print("Turning ignition ", "on" if self.engine.current_track_vehicle.ignition else "off")
 
 class TakeoverPolicy(EnvInputPolicy):
     """

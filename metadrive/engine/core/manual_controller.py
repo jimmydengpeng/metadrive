@@ -112,7 +112,7 @@ class KeyboardController(Controller):
         self.throttle_brake = min(max(-1., self.throttle_brake), 1.)
         self.steering = min(max(-1., self.steering), 1.)
 
-    def process_others(self, takeover_callback=None):
+    def process_others(self, takeover_callback=None, engaged_callback=None):
         """This function allows the outer loop to call callback if some signal is received by the controller."""
         if (takeover_callback is None) or (not self.pygame_control) or (not pygame.get_init()):
             return

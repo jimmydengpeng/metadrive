@@ -83,7 +83,7 @@ class BaseVehicle(BaseObject, BaseVehicleState):
     PARAMETER_SPACE = ParameterSpace(VehicleParameterSpace.BASE_VEHICLE)
     MAX_LENGTH = 10
     MAX_WIDTH = 2.5
-    MAX_STEERING = 60
+    MAX_STEERING = 15
 
     # LENGTH = None
     # WIDTH = None
@@ -182,6 +182,9 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         self._add_modules_for_vehicle()
         self.takeover = False
         self.expert_takeover = False
+        self.cruise_engaged = False
+        self.cruise_sp = 0
+        self.ignition = False
         self.energy_consumption = 0
         self.action_space = self.get_action_space_before_init(extra_action_dim=self.config["extra_action_dim"])
         self.break_down = False
@@ -298,13 +301,18 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         self.out_of_route = self._out_of_route()
         step_info = self._update_overtake_stat()
         my_policy = self.engine.get_policy(self.name)
+        is_engaged = self.cruise_engaged
+        cruise_sp = self.cruise_sp
         step_info.update(
             {
                 "velocity": float(self.speed),
                 "steering": float(self.steering),
                 "acceleration": float(self.throttle_brake),
+                'ignition': self.ignition,
                 "step_energy": step_energy,
                 "episode_energy": episode_energy,
+                "policy_engaged": is_engaged,
+                "policy_cruise_sp": cruise_sp,
                 "policy": my_policy.name if my_policy is not None else my_policy
             }
         )
@@ -398,6 +406,7 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         self.front_vehicles = set()
         self.back_vehicles = set()
         self.expert_takeover = False
+        self.cruise_engaged = False
         if self.config["need_navigation"]:
             assert self.navigation
 

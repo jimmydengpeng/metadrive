@@ -23,6 +23,7 @@ if __name__ == "__main__":
         random_agent_model=True,
         random_lane_width=True,
         random_lane_num=True,
+        mouse_look=True,
         map=4,  # seven block
         start_seed=random.randint(0, 1000)
     )
