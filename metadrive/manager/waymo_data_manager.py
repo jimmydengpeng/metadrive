@@ -36,7 +36,7 @@ class WaymoDataManager(BaseManager):
             # self.waymo_case[i] = self._get_case(i)
 
     def _get_case(self, i):
-        if not (self.start_case_index <= i < self.zstart_case_index + self.case_num):
+        if not (self.start_case_index <= i < self.start_case_index + self.case_num):
             print("Case ID {} exceeds range [{}, {})".format(i, self.start_case_index, self.start_case_index + self.case_num))
         file_path = os.path.join(self.directory, "{}.pkl".format(i))
         return read_waymo_data(file_path)
