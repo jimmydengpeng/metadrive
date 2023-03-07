@@ -581,7 +581,8 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         if self.render:
             [path, scale, x_y_z_offset, H] = self.path
             if path not in BaseVehicle.model_collection:
-                car_model = self.loader.loadModel(AssetLoader.file_path("models", path, "vehicle.gltf"))
+                # car_model = self.loader.loadModel(AssetLoader.file_path("models", path, "vehicle.gltf"))
+                car_model = self.loader.loadModel(AssetLoader.file_path("models", "vehicle", "2023-03-06_liqi_vehicle", "2023-03-06_liqi_vehicle.obj"))
                 BaseVehicle.model_collection[path] = car_model
             else:
                 car_model = BaseVehicle.model_collection[path]
