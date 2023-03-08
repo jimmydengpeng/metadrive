@@ -24,6 +24,10 @@ class InterpolatingLine:
             delta_y = position[1] - seg["start_point"][1]
             longitudinal = delta_x * seg["direction"][0] + delta_y * seg["direction"][1]
             lateral = delta_x * seg["lateral_direction"][0] + delta_y * seg["lateral_direction"][1]
+
+            if longitudinal < 0:
+                return accumulate_len + longitudinal, lateral
+
             if not only_in_lane_point:
                 ret.append([accumulate_len + longitudinal, lateral])
             else:
