@@ -381,19 +381,17 @@ class TopDownRenderer:
             )
 
         if self.show_agent_name:
-            raise ValueError()
-            # FIXME check this later
             if self.pygame_font is None:
-                self.pygame_font = pygame.font.SysFont("Arial.ttf", 30)
+                self.pygame_font = pygame.font.SysFont("Arial.ttf", 20)
             agents = [agent.name for agent in list(self.engine.agents.values())]
             for v in self.history_objects[i]:
                 if v.name in agents:
                     position = self._runtime_canvas.pos2pix(*v.position)
                     new_position = (position[0] - off[0], position[1] - off[1])
                     img = self.pygame_font.render(
-                        text=self.engine.object_to_agent(v.name),
-                        antialias=True,
-                        color=(0, 0, 0, 128),
+                        self.engine.object_to_agent(v.name),
+                        True,
+                        (0, 0, 0, 128),
                     )
                     # img.set_alpha(None)
                     self.canvas.blit(
