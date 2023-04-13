@@ -57,9 +57,6 @@ class OpenpilotControlPolicy(EnvInputPolicy):
         try:
             if self.engine.current_track_vehicle.expert_takeover:
                 self.sm.update(0)
-                print("accel",self.sm['carControl'].actuators.accel)
-                print("steer",self.sm['carControl'].actuators.steer)
-               
                 self.gas_brake = self.sm['carControl'].actuators.accel
                 self.steer = self.sm['carControl'].actuators.steer
                 return self.steer, self.gas_brake
@@ -89,12 +86,12 @@ class OpenpilotControlPolicy(EnvInputPolicy):
 
     def increase_cruise_sp(self):
         if self.engine.current_track_vehicle is not None:
-            self.engine.current_track_vehicle.cruise_sp += 1
+            self.engine.current_track_vehicle.cruise_sp += 5
             print("The cruise speed is set to: ", self.engine.current_track_vehicle.cruise_sp)
     
     def decrease_cruise_sp(self):
         if self.engine.current_track_vehicle is not None:
-            self.engine.current_track_vehicle.cruise_sp -= 1
+            self.engine.current_track_vehicle.cruise_sp -= 5
             print("The cruise speed is set to: ", self.engine.current_track_vehicle.cruise_sp)
     
     def toggle_ignition(self):

@@ -25,6 +25,9 @@ class TerminationState:
 
 
 HELP_MESSAGE = "Keyboard Shortcuts:\n" \
+               "  I: Openpilot Onroad/Offroad Toggle\n" \
+               "  E: Enable Openpilot\n" \
+               "  T: Openpilot Manual Override\n" \
                "  W: Acceleration\n" \
                "  S: Braking\n" \
                "  A: Moving Left\n" \

@@ -37,8 +37,9 @@ class MainCamera:
         self.camera = engine.cam
         self.camera_queue = None
         self.camera_dist = camera_dist
-        self.camera_pitch = -engine.global_config["camera_pitch"] if engine.global_config["camera_pitch"
-                                                                                          ] is not None else None
+        self.camera_pitch = -engine.global_config["camera_pitch"] if engine.global_config["camera_pitch"] is not None else None
+        self.camera_yaw = engine.global_config["camera_yaw"] if engine.global_config["camera_yaw"] is not None else None
+        self.camera_heading = engine.global_config["camera_heading"] if engine.global_config["camera_heading"] is not None else None
         self.camera_smooth = engine.global_config["camera_smooth"]
         self.camera.node().getLens().setFov(engine.global_config["camera_fov"])
         self.camera.node().getLens().setAspectRatio(engine.global_config["camera_aspect_ratio"])
@@ -53,6 +54,13 @@ class MainCamera:
         self.inputs.watchWithModifiers('high', '=')
         self.inputs.watchWithModifiers('low', '-')
         self.inputs.watchWithModifiers('low', '_')
+        self.inputs.watchWithModifiers('left_yaw', 'home')
+        self.inputs.watchWithModifiers('right_yaw', 'page_up')
+        self.inputs.watchWithModifiers('up_pitch', 'arrow_up')
+        self.inputs.watchWithModifiers('down_pitch', 'arrow_down')
+        self.inputs.watchWithModifiers('left_heading', 'arrow_left')
+        self.inputs.watchWithModifiers('right_heading', 'arrow_right')
+
 
         # free bird view camera
         self.top_down_camera_height = self.TOP_DOWN_VIEW_HEIGHT
@@ -135,6 +143,19 @@ class MainCamera:
     def _chase_task(self, vehicle, task):
         if self.engine.global_config["mouse_look"]:
             self.update_mouse_info()
+
+        if self.inputs.isSet("up_pitch"):
+            self.camera_pitch += .1
+        if self.inputs.isSet("down_pitch"):
+            self.camera_pitch -= .1
+        if self.inputs.isSet("left_yaw"):
+            self.camera_yaw -= .1
+        if self.inputs.isSet("right_yaw"):
+            self.camera_yaw += .1
+        if self.inputs.isSet("right_heading"):
+            self.camera_heading -= .1
+        if self.inputs.isSet("left_heading"):
+            self.camera_heading += .1
         self.chase_camera_height = self._update_height(self.chase_camera_height)
         chassis_pos = vehicle.chassis.get_pos()
         self.camera_queue.put(chassis_pos)
@@ -161,6 +182,7 @@ class MainCamera:
         self.camera.setPos(*camera_pos)
         current_pos = vehicle.chassis.getPos()
         current_pos[2] += 2
+        
 
         if self.camera_pitch is None:
             self.camera.lookAt(current_pos)
@@ -168,6 +190,9 @@ class MainCamera:
         else:
             self.camera.setHpr(vehicle.origin.getHpr())
             self.camera.setP(self.camera.getP() + self.camera_pitch)
+            self.camera.setH(self.camera.getH() + self.camera_heading)
+            self.camera.setR(self.camera.getR() + self.camera_yaw)
+
         if self.FOLLOW_LANE:
             self.camera.setH(
                 self._heading_of_lane(vehicle.navigation.current_ref_lanes[0], vehicle.position) / np.pi * 180 - 90
