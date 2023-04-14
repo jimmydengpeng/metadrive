@@ -6,7 +6,6 @@ from metadrive.engine.asset_loader import AssetLoader
 from metadrive.scenario.utils import read_scenario_data
 
 if __name__ == "__main__":
-
     openai.organization = "org-lCw9sPRNt7Cdd1ses124VCsI"
     openai.api_key = os.getenv("OPENAI_API_KEY")
     l = openai.Model.list()
@@ -33,9 +32,9 @@ if __name__ == "__main__":
 
             input_dict[k]["type"] = v["type"]
             input_dict[k]["state"] = {}
-            input_dict[k]["state"]["position"] = v["state"]["position"][0].tolist()
-            input_dict[k]["state"]["heading"] = v["state"]["heading"][0].tolist()
-            input_dict[k]["state"]["velocity"] = v["state"]["velocity"][0].tolist()
+            input_dict[k]["state"]["position"] = [round(float(value), 3) for value in v["state"]["position"][0].tolist()]
+            input_dict[k]["state"]["heading"] = round(float(v["state"]["heading"][0]), 3)
+            input_dict[k]["state"]["velocity"] = [round(float(value), 3) for value in v["state"]["velocity"][0].tolist()]
 
         # input_dict = {"tracks": input_dict}
 
@@ -44,7 +43,19 @@ if __name__ == "__main__":
             for atype in ['VEHICLE', 'PEDESTRIAN', 'CYCLIST']
         }
 
-        question = ["start"] + ["{}\n{}".format(k, v) for k, v in input_dict.items()] + ["end"]
+        # question = ["start"] + ["{}\n{}".format(k, v) for k, v in input_dict.items()] + ["end"]
+
+        question = []
+        for count, (k, v) in enumerate(input_dict.items()):
+            s = "The actor {} is a {} whose position is {}, heading is {} and velocity is {}. ".format(
+                k, v["type"], v["state"]["position"], v["state"]["heading"], v["state"]["velocity"]
+            )
+            if count < len(input_dict) - 1:
+                s += "The input is not finished yet."
+            else:
+                s += "The input is finished."
+            question.append(s)
+
 
         return question, answer
 
@@ -52,7 +63,7 @@ if __name__ == "__main__":
     q1, a1 = get_input_dict(scenario)
     q2, a2 = get_input_dict(scenario2)
 
-    promt = "You are a helpful assistant that is capable to read and understand MetaDrive Scenario Description, a nested Python dict object that describe everything in a driving scenario, including the HD map and the states of actors and traffic lights at each time steps. A scenario (an instance of MetaDrive Scenario Description) is a dict whose keys are the name of actors and whose values are a dict describing the state of an actor. The state dict of an actor has two keys: 'type' and 'state'. The 'type' is a string describing the type of the actor in one of those choices: ['VEHICLE', 'PEDESTRIAN', 'CYCLIST']. The `state` is a dict describing the states of the actor with these keys: ['position', 'heading', 'velocity'], where 'position' is a 3-dimensional list describing the x, y, z coordinate of the actor, 'heading' is a radian describing the heading direction of the actor, and the velocity is a 2-dimensional list describing the velocity of the actor projected into x, y coordinates. Due to the token limits, the user will feed the information of each actor to you via separate messages. Each message has two lines, the first line tell you the name of the actor and the second line is the state dict of the actor. You will receive two special messages 'start' and 'end' telling you the user begins to or has finished the input. You need to return a Python dict whose keys are three types of actor and the values are the count of the actor of that type."
+    promt = "You are a helpful assistant that is capable to read and understand MetaDrive Scenario Description, a nested Python dict object that describe everything in a driving scenario, including the HD map and the states of actors and traffic lights at each time steps. A scenario (an instance of MetaDrive Scenario Description) is a dict whose keys are the name of actors and whose values are a dict describing the state of an actor. The state dict of an actor has two keys: 'type' and 'state'. The 'type' is a string describing the type of the actor in one of those choices: ['VEHICLE', 'PEDESTRIAN', 'CYCLIST']. The `state` is a dict describing the states of the actor with these keys: ['position', 'heading', 'velocity'], where 'position' is a 3-dimensional list describing the x, y, z coordinate of the actor, 'heading' is a radian describing the heading direction of the actor, and the velocity is a 2-dimensional list describing the velocity of the actor projected into x, y coordinates. Due to the token limits, the user will feed the information of each actor to you via separate messages. Each message has two lines, the first line tell you the name of the actor and the second line is the state dict of the actor. You need to return a Python dict whose keys are three types of actor and the values are the count of the actor of that type."
 
     messages = [
                    {"role": "system", "content": promt},
