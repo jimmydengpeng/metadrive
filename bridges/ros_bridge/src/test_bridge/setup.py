@@ -10,16 +10,16 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
-        ('share/' + package_name, glob('launch/*.launch.py'))
+        ('share/' + package_name, glob('launch/*.launch.py')),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name, glob('rviz/*.rviz')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='liuzhi',
-    maintainer_email='candyboear@gmail.com',
+    maintainer='Zhizheng Liu',
+    maintainer_email='zhizheng@ucla.edu',
     description='ros2 bridge for metadrive',
     license='MIT',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'camera_bridge = test_bridge.camera_bridge:main',

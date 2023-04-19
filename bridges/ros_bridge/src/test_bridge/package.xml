@@ -4,7 +4,7 @@
   <name>test_bridge</name>
   <version>0.0.0</version>
   <description>ros2 bridge for metadrive</description>
-  <maintainer email="candyboear@gmail.com">liuzhi</maintainer>
+  <maintainer email="zhizheng@ucla.edu">Zhizheng Liu</maintainer>
   <license>MIT</license>
 
   <export>
