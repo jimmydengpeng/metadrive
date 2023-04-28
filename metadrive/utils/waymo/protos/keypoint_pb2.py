@@ -13,7 +13,7 @@ from google.protobuf import symbol_database as _symbol_database
 
 _sym_db = _symbol_database.Default()
 
-from metadrive.utils.waymo_utils.protos import vector_pb2 as waymo__open__dataset_dot_protos_dot_vector__pb2
+from metadrive.utils.waymo.protos import vector_pb2 as waymo__open__dataset_dot_protos_dot_vector__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
     name='waymo_open_dataset/protos/keypoint.proto',
