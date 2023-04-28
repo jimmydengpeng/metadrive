@@ -7,15 +7,14 @@ This script will create the output folder "processed_data" sharing the same leve
 
 """
 import argparse
-from metadrive.utils.utils import dict_recursive_remove_array
 import copy
 import os
 import pickle
 from collections import defaultdict
 
 import numpy as np
-
 from metadrive.constants import DATA_VERSION
+from metadrive.utils.utils import dict_recursive_remove_array
 
 try:
     import tensorflow as tf
@@ -118,7 +117,7 @@ def _get_number_summary(scenario):
     return number_summary_dict
 
 
-def parse_data(file_list, input_path, output_path, worker_index=None):
+def parse_data(file_list, input_path, output_path, worker_index=None, valid_check=True):
     scenario = scenario_pb2.Scenario()
 
     metadata_recorder = {}
@@ -217,7 +216,7 @@ def parse_data(file_list, input_path, output_path, worker_index=None):
 
             md_scenario = md_scenario.to_dict()
 
-            SD.sanity_check(md_scenario, check_self_type=True)
+            SD.sanity_check(md_scenario, check_self_type=True, valid_check=valid_check)
 
             p = os.path.join(output_path, export_file_name)
             with open(p, "wb") as f:
