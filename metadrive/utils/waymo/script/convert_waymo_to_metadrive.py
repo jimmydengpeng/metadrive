@@ -117,7 +117,7 @@ def _get_number_summary(scenario):
     return number_summary_dict
 
 
-def parse_data(file_list, input_path, output_path, worker_index=None, valid_check=True):
+def parse_data(file_list, input_path, output_path, worker_index=None):
     scenario = scenario_pb2.Scenario()
 
     metadata_recorder = {}
@@ -216,7 +216,7 @@ def parse_data(file_list, input_path, output_path, worker_index=None, valid_chec
 
             md_scenario = md_scenario.to_dict()
 
-            SD.sanity_check(md_scenario, check_self_type=True, valid_check=valid_check)
+            SD.sanity_check(md_scenario, check_self_type=True)
 
             p = os.path.join(output_path, export_file_name)
             with open(p, "wb") as f:

@@ -159,7 +159,7 @@ class ScenarioDescription(dict):
     ALLOW_TYPES = (int, float, str, np.ndarray, dict, list, tuple, type(None), set)
 
     @classmethod
-    def sanity_check(cls, scenario_dict, check_self_type=False, valid_check=True):
+    def sanity_check(cls, scenario_dict, check_self_type=False):
 
         if check_self_type:
             assert isinstance(scenario_dict, dict)
@@ -179,14 +179,14 @@ class ScenarioDescription(dict):
         assert isinstance(scenario_dict[cls.TRACKS], dict)
         for obj_id, obj_state in scenario_dict[cls.TRACKS].items():
             cls._check_object_state_dict(
-                obj_state, scenario_length=scenario_length, object_id=obj_id, valid_check=valid_check
+                obj_state, scenario_length=scenario_length, object_id=obj_id
             )
 
         # Check dynamic_map_state
         assert isinstance(scenario_dict[cls.DYNAMIC_MAP_STATES], dict)
         for obj_id, obj_state in scenario_dict[cls.DYNAMIC_MAP_STATES].items():
             cls._check_object_state_dict(
-                obj_state, scenario_length=scenario_length, object_id=obj_id, valid_check=valid_check
+                obj_state, scenario_length=scenario_length, object_id=obj_id
             )
 
         # Check metadata
@@ -198,7 +198,7 @@ class ScenarioDescription(dict):
         assert scenario_dict[cls.METADATA][cls.TIMESTEP].shape == (scenario_length, )
 
     @classmethod
-    def _check_object_state_dict(cls, obj_state, scenario_length, object_id, valid_check=True):
+    def _check_object_state_dict(cls, obj_state, scenario_length, object_id):
         # Check keys
         assert set(obj_state).issuperset(cls.STATE_DICT_KEYS)
 
