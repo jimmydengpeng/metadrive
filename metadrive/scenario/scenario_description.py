@@ -185,7 +185,9 @@ class ScenarioDescription(dict):
         # Check dynamic_map_state
         assert isinstance(scenario_dict[cls.DYNAMIC_MAP_STATES], dict)
         for obj_id, obj_state in scenario_dict[cls.DYNAMIC_MAP_STATES].items():
-            cls._check_object_state_dict(obj_state, scenario_length=scenario_length, object_id=obj_id)
+            cls._check_object_state_dict(
+                obj_state, scenario_length=scenario_length, object_id=obj_id, valid_check=valid_check
+            )
 
         # Check metadata
         assert isinstance(scenario_dict[cls.METADATA], dict)
@@ -229,7 +231,9 @@ class ScenarioDescription(dict):
                 _array = state_array[..., :2] if state_key == "position" else state_array
                 assert abs(np.sum(_array[np.where(obj_state[cls.STATE]["valid"], False, True)])) < 1e-2, \
                     "Valid array mismatches with {} array, some frames in {} have non-zero values, " \
-                    "so it might be valid. Selected: {}".format(state_key, state_key, _array[np.where(obj_state[cls.STATE]["valid"], False, True)])
+                    "so it might be valid. Selected: {}".format(
+                        state_key, state_key, _array[np.where(obj_state[cls.STATE]["valid"], False, True)]
+                    )
 
         # Check metadata
         assert isinstance(obj_state[cls.METADATA], dict)
