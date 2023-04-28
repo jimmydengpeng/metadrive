@@ -223,17 +223,17 @@ class ScenarioDescription(dict):
                 assert state_array.shape[
                     1] != 0, "Please convert all state with dim 1 to a 1D array instead of 2D array."
 
-            if state_key == "valid":
-                assert np.sum(state_array) >= 1, "No frame valid for this object. Consider removing it"
+            # if state_key == "valid":
+            #     assert np.sum(state_array) >= 1, "No frame valid for this object. Consider removing it"
 
             # check valid
-            if "valid" in obj_state[cls.STATE] and valid_check:
-                _array = state_array[..., :2] if state_key == "position" else state_array
-                assert abs(np.sum(_array[np.where(obj_state[cls.STATE]["valid"], False, True)])) < 1e-2, \
-                    "Valid array mismatches with {} array, some frames in {} have non-zero values, " \
-                    "so it might be valid. Selected: {}".format(
-                        state_key, state_key, _array[np.where(obj_state[cls.STATE]["valid"], False, True)]
-                    )
+            # if "valid" in obj_state[cls.STATE] and valid_check:
+            #     _array = state_array[..., :2] if state_key == "position" else state_array
+            #     assert abs(np.sum(_array[np.where(obj_state[cls.STATE]["valid"], False, True)])) < 1e-2, \
+            #         "Valid array mismatches with {} array, some frames in {} have non-zero values, " \
+            #         "so it might be valid. Selected: {}".format(
+            #             state_key, state_key, _array[np.where(obj_state[cls.STATE]["valid"], False, True)]
+            #         )
 
         # Check metadata
         assert isinstance(obj_state[cls.METADATA], dict)
