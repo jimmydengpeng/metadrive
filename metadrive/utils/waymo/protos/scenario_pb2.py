@@ -13,8 +13,8 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-from waymo_open_dataset.protos import compressed_lidar_pb2 as waymo__open__dataset_dot_protos_dot_compressed__lidar__pb2
-from waymo_open_dataset.protos import map_pb2 as waymo__open__dataset_dot_protos_dot_map__pb2
+from metadrive.utils.waymo_utils.protos import compressed_lidar_pb2 as waymo__open__dataset_dot_protos_dot_compressed__lidar__pb2
+from metadrive.utils.waymo_utils.protos import map_pb2 as waymo__open__dataset_dot_protos_dot_map__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
