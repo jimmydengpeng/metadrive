@@ -9,10 +9,10 @@ def vis_top_down_render_with_panda_render():
 
     env = TopDownSingleFrameMetaDriveEnv(
         {
-            "environment_num": 1,
+            "num_scenarios": 1,
             "manual_control": True,
             "use_render": True,
-            "offscreen_render": False,
+            "image_observation": False,
             "traffic_mode": "respawn"
         }
     )
@@ -28,8 +28,8 @@ def vis_top_down_render_with_panda_render():
         )
         # if d:
         #     env.reset()
-        if i % 1000 == 0:
-            print("Steps: {}, Time: {}".format(i, time.time() - s))
+        # if i % 1000 == 0:
+        # print("Steps: {}, Time: {}".format(i, time.time() - s))
     env.close()
 
 

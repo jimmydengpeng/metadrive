@@ -5,20 +5,19 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 if __name__ == "__main__":
 
     def get_image(env):
-        env.vehicle.image_sensors[env.vehicle.config["image_source"]].save_image(env.vehicle, "debug.jpg")
+        env.vehicle.get_camera(env.vehicle.config["image_source"]).save_image(env.vehicle, "debug.jpg")
         env.engine.screenshot()
 
     env = MetaDriveEnv(
         {
-            "environment_num": 1,
+            "num_scenarios": 1,
             "traffic_density": 0.1,
             "start_seed": 4,
             "manual_control": True,
             "use_render": True,
-            "offscreen_render": True,
+            "image_observation": True,
             "rgb_clip": True,
             "vehicle_config": dict(depth_camera=(200, 88, True), image_source="depth_camera"),
-            "headless_machine_render": False,
             "map_config": {
                 BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_NUM,
                 BaseMap.GENERATE_CONFIG: 12,
@@ -38,6 +37,6 @@ if __name__ == "__main__":
             #     ObservationType.show_gray_scale_array(o["image"][:, :, i])
             env.render()
         # if d:
-        #     print("Reset")
+        #     # print("Reset")
         #     env.reset()
     env.close()

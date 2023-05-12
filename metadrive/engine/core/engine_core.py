@@ -22,6 +22,7 @@ from metadrive.engine.core.onscreen_message import ScreenMessage
 from metadrive.engine.core.physics_world import PhysicsWorld
 from metadrive.engine.core.sky_box import SkyBox
 from metadrive.engine.core.terrain import Terrain
+from metadrive.render_pipeline.rpcore import RenderPipeline
 from metadrive.utils.utils import is_mac, setup_logger
 import lz4 as lz4
 
@@ -67,16 +68,21 @@ def attach_logo(engine):
 
 class EngineCore(ShowBase.ShowBase):
     DEBUG = False
+    global_config = None  # global config can exist before engine initialization
     loadPrcFileData("", "window-title {}".format(EDITION))
     loadPrcFileData("", "framebuffer-multisample 1")
     loadPrcFileData("", "multisamples 8")
-    loadPrcFileData("", 'bullet-filter-algorithm groups-mask')
+    loadPrcFileData("", "bullet-filter-algorithm groups-mask")
     loadPrcFileData("", "audio-library-name null")
     loadPrcFileData("", "model-cache-compressed-textures 1")
+    loadPrcFileData("", "textures-power-2 none")
 
     # loadPrcFileData("", "transform-cache 0")
     # loadPrcFileData("", "state-cache 0")
     loadPrcFileData("", "garbage-collect-states 0")
+
+    # loadPrcFileData("", "allow-incomplete-render #t")
+    # loadPrcFileData("", "# even-animation #t")
 
     # loadPrcFileData("", " framebuffer-srgb truein")
     # loadPrcFileData("", "geom-cache-size 50000")
@@ -88,12 +94,16 @@ class EngineCore(ShowBase.ShowBase):
     # loadPrcFileData("", "gl-version 3 2")
 
     def __init__(self, global_config):
-        self.global_config = global_config
+        # if EngineCore.global_config is not None:
+        #     # assert global_config is EngineCore.global_config, \
+        #     #     "No allowed to change ptr of global config, which may cause issue"
+        #     pass
+        # else:
+        EngineCore.global_config = global_config
+
         if self.global_config["pstats"]:
             # pstats debug provided by panda3d
             loadPrcFileData("", "want-pstats 1")
-
-        loadPrcFileData("", "win-size {} {}".format(*self.global_config["window_size"]))
 
         # Setup onscreen render
         if self.global_config["use_render"]:
@@ -101,44 +111,67 @@ class EngineCore(ShowBase.ShowBase):
             self.mode = RENDER_MODE_ONSCREEN
             # Warning it may cause memory leak, Pand3d Official has fixed this in their master branch.
             # You can enable it if your panda version is latest.
-            loadPrcFileData("", "threading-model Cull/Draw")  # multi-thread render, accelerate simulation when evaluate
+            if self.global_config["multi_thread_render"] and not self.use_render_pipeline:
+                # multi-thread render, accelerate simulation
+                loadPrcFileData("", "threading-model {}".format(self.global_config["multi_thread_render_mode"]))
         else:
-            if self.global_config["offscreen_render"]:
+            self.global_config["show_coordinates"] = False
+            if self.global_config["image_observation"]:
                 self.mode = RENDER_MODE_OFFSCREEN
-                loadPrcFileData("", "threading-model Cull/Draw")
+                if self.global_config["multi_thread_render"] and not self.use_render_pipeline:
+                    # render-pipeline can not work with multi-thread rendering
+                    loadPrcFileData("", "threading-model {}".format(self.global_config["multi_thread_render_mode"]))
+                if self.global_config["vehicle_config"]["image_source"] != "main_camera":
+                    # reduce size as we don't use the main camera content for improving efficiency
+                    self.global_config["window_size"] = (1, 1)
+
             else:
                 self.mode = RENDER_MODE_NONE
+                if self.global_config["show_interface"]:
+                    # Disable useless camera capturing in none mode
+                    self.global_config["show_interface"] = False
 
         if is_mac() and (self.mode == RENDER_MODE_OFFSCREEN):  # Mac don't support offscreen rendering
             self.mode = RENDER_MODE_ONSCREEN
 
+        loadPrcFileData("", "win-size {} {}".format(*self.global_config["window_size"]))
+
+        if self.use_render_pipeline:
+            self.render_pipeline = RenderPipeline()
+            self.render_pipeline.pre_showbase_init()
+        else:
+            self.render_pipeline = None
+
         # Setup some debug options
-        if self.global_config["headless_machine_render"]:
-            # headless machine support
-            loadPrcFileData("", "load-display  pandagles2")
+        # if self.global_config["headless_machine_render"]:
+        #     # headless machine support
+        #     # loadPrcFileData("", "load-display  pandagles2")
+        #     # no further actions will be applied now!
+        #     pass
         if self.global_config["debug"]:
             # debug setting
             EngineCore.DEBUG = True
             _free_warning()
             setup_logger(debug=True)
-            self.accept('1', self.toggleDebug)
-            self.accept('2', self.toggleWireframe)
-            self.accept('3', self.toggleTexture)
-            self.accept('4', self.toggleAnalyze)
+            self.accept("1", self.toggleDebug)
+            self.accept("2", self.toggleWireframe)
+            self.accept("3", self.toggleTexture)
+            self.accept("4", self.toggleAnalyze)
+            self.accept("5", self.reload_shader)
         else:
             # only report fatal error when debug is False
             _suppress_warning()
             # a special debug mode
             if self.global_config["debug_physics_world"]:
-                self.accept('1', self.toggleDebug)
-                self.accept('4', self.toggleAnalyze)
+                self.accept("1", self.toggleDebug)
+                self.accept("4", self.toggleAnalyze)
 
-        if self.global_config["disable_model_compression"]:
-            pass
-        else:
+        if not self.global_config["disable_model_compression"] and not self.use_render_pipeline:
             loadPrcFileData("", "compressed-textures 1")  # Default to compress
 
         super(EngineCore, self).__init__(windowType=self.mode)
+        if self.use_render_pipeline and self.mode != RENDER_MODE_NONE:
+            self.render_pipeline.create(self)
 
         # main_window_position = (0, 0)
         if self.mode == RENDER_MODE_ONSCREEN:
@@ -172,21 +205,21 @@ class EngineCore(ShowBase.ShowBase):
         if self.mode == RENDER_MODE_ONSCREEN:
             self.disableMouse()
 
-        if not self.global_config["debug_physics_world"] and (self.mode in [RENDER_MODE_ONSCREEN, RENDER_MODE_OFFSCREEN
-                                                                            ]):
+        if not self.global_config["debug_physics_world"] \
+                and (self.mode in [RENDER_MODE_ONSCREEN, RENDER_MODE_OFFSCREEN]):
             initialize_asset_loader(self)
             gltf.patch_loader(self.loader)
-
-            # Display logo
-            if self.mode == RENDER_MODE_ONSCREEN and (not self.global_config["debug"]):
-                if self.global_config["show_logo"]:
-                    self._window_logo = attach_logo(self)
-                self._loading_logo = attach_cover_image(
-                    window_width=self.get_size()[0], window_height=self.get_size()[1]
-                )
-                for i in range(5):
-                    self.graphicsEngine.renderFrame()
-                self.taskMgr.add(self.remove_logo, "remove _loading_logo in first frame")
+            if not self.use_render_pipeline:
+                # Display logo
+                if self.mode == RENDER_MODE_ONSCREEN and (not self.global_config["debug"]):
+                    if self.global_config["show_logo"]:
+                        self._window_logo = attach_logo(self)
+                    self._loading_logo = attach_cover_image(
+                        window_width=self.get_size()[0], window_height=self.get_size()[1]
+                    )
+                    for i in range(5):
+                        self.graphicsEngine.renderFrame()
+                    self.taskMgr.add(self.remove_logo, "remove _loading_logo in first frame")
 
         self.closed = False
 
@@ -196,6 +229,7 @@ class EngineCore(ShowBase.ShowBase):
 
         # attach node to this root whose children nodes will be clear after calling clear_world()
         self.worldNP = self.render.attachNewNode("world_np")
+        self.origin = self.worldNP
 
         # same as worldNP, but this node is only used for render gltf model with pbr material
         self.pbr_worldNP = self.pbr_render.attachNewNode("pbrNP")
@@ -204,6 +238,7 @@ class EngineCore(ShowBase.ShowBase):
         # some render attribute
         self.pbrpipe = None
         self.world_light = None
+        self.common_filter = None
 
         # physics world
         self.physics_world = PhysicsWorld(self.global_config["debug_static_world"])
@@ -215,48 +250,59 @@ class EngineCore(ShowBase.ShowBase):
         self.force_fps = ForceFPS(self)
 
         # init terrain
-        self.terrain = Terrain(self.global_config["show_terrain"])
-        self.terrain.attach_to_world(self.render, self.physics_world)
+        self.terrain = Terrain(self.global_config["show_terrain"], self)
+        # self.terrain.attach_to_world(self.render, self.physics_world)
+
+        self.sky_box = None
 
         # init other world elements
         if self.mode != RENDER_MODE_NONE:
+            if self.use_render_pipeline:
+                self.pbrpipe = None
+                if self.global_config["daytime"] is not None:
+                    self.render_pipeline.daytime_mgr.time = self.global_config["daytime"]
+            else:
+                from metadrive.engine.core.our_pbr import OurPipeline
+                self.pbrpipe = OurPipeline(
+                    render_node=None,
+                    window=None,
+                    camera_node=None,
+                    msaa_samples=16,
+                    max_lights=8,
+                    use_normal_maps=False,
+                    use_emission_maps=True,
+                    exposure=1.0,
+                    enable_shadows=False,
+                    enable_fog=False,
+                    use_occlusion_maps=False
+                )
+                self.pbrpipe.render_node = self.pbr_render
+                self.pbrpipe.render_node.set_antialias(AntialiasAttrib.M_auto)
+                self.pbrpipe._recompile_pbr()
+                # self.pbrpipe.manager.cleanup()
+                #
+                # # filter
+                # from direct.filter.CommonFilters import CommonFilters
+                # self.common_filter = CommonFilters(self.win, self.cam)
+                # self.common_filter.set_gamma_adjust(0.8)
 
-            from metadrive.engine.core.our_pbr import OurPipeline
-            self.pbrpipe = OurPipeline(
-                render_node=None,
-                window=None,
-                camera_node=None,
-                msaa_samples=4,
-                max_lights=8,
-                use_normal_maps=False,
-                use_emission_maps=True,
-                exposure=1.0,
-                enable_shadows=False,
-                enable_fog=False,
-                use_occlusion_maps=False
-            )
-            self.pbrpipe.render_node = self.pbr_render
-            self.pbrpipe.render_node.set_antialias(AntialiasAttrib.M_auto)
-            self.pbrpipe._recompile_pbr()
-            self.pbrpipe.manager.cleanup()
+                self.sky_box = SkyBox(not self.global_config["show_skybox"])
+                self.sky_box.attach_to_world(self.render, self.physics_world)
+
+                self.world_light = Light(self.global_config)
+                self.world_light.attach_to_world(self.render, self.physics_world)
+                self.render.setLight(self.world_light.direction_np)
+                self.render.setLight(self.world_light.ambient_np)
+                self.render.setShaderAuto()
+                self.render.setAntialias(AntialiasAttrib.MAuto)
 
             # set main cam
             self.cam.node().setCameraMask(CamMask.MainCam)
             self.cam.node().getDisplayRegion(0).setClearColorActive(True)
             self.cam.node().getDisplayRegion(0).setClearColor(BKG_COLOR)
             lens = self.cam.node().getLens()
-            lens.setFov(80)
 
-            self.sky_box = SkyBox(not self.global_config["show_skybox"])
-            self.sky_box.attach_to_world(self.render, self.physics_world)
-
-            self.world_light = Light(self.global_config)
-            self.world_light.attach_to_world(self.render, self.physics_world)
-            self.render.setLight(self.world_light.direction_np)
-            self.render.setLight(self.world_light.ambient_np)
-
-            self.render.setShaderAuto()
-            self.render.setAntialias(AntialiasAttrib.MAuto)
+            lens.setFov(self.global_config["camera_fov"])
 
             # ui and render property
             if self.global_config["show_fps"]:
@@ -280,6 +326,10 @@ class EngineCore(ShowBase.ShowBase):
                 print("Streamer only support onscreen mode! Starting anyway...")
             self.start_streamer()
             self.taskMgr.add(self.send_frame_buffer_direct, "streamer", sort=1, priority=1)
+                  
+        self.coordinate_line = []
+        if self.global_config["show_coordinates"]:
+            self.show_coordinates()
 
     def send_frame_buffer(self):
         # check if self.win exists yet
@@ -350,6 +400,7 @@ class EngineCore(ShowBase.ShowBase):
                 print("metadrive/engine/core/engine_core: Dropping frame")
             del data # explicit delete to free memory
             return task.cont
+ 
 
     def render_frame(self, text: Optional[Union[dict, str]] = None):
         """
@@ -362,7 +413,7 @@ class EngineCore(ShowBase.ShowBase):
 
         if self.on_screen_message is not None:
             self.on_screen_message.render(text)
-        if self.mode == RENDER_MODE_ONSCREEN:
+        if self.mode != RENDER_MODE_NONE and self.sky_box is not None:
             self.sky_box.step()
 
     def step_physics_world(self):
@@ -370,7 +421,7 @@ class EngineCore(ShowBase.ShowBase):
         self.physics_world.dynamic_world.doPhysics(dt, 1, dt)
 
     def _debug_mode(self):
-        debugNode = BulletDebugNode('Debug')
+        debugNode = BulletDebugNode("Debug")
         debugNode.showWireframe(True)
         debugNode.showConstraints(True)
         debugNode.showBoundingBoxes(False)
@@ -416,13 +467,14 @@ class EngineCore(ShowBase.ShowBase):
         self.physics_world.destroy()
         self.destroy()
         close_asset_loader()
+        EngineCore.global_config = None
 
         import sys
         if sys.version_info >= (3, 0):
             import builtins
         else:
             import __builtin__ as builtins
-        if hasattr(builtins, 'base'):
+        if hasattr(builtins, "base"):
             del builtins.base
 
     def clear_world(self):
@@ -462,14 +514,50 @@ class EngineCore(ShowBase.ShowBase):
             return task.cont
 
     def add_line(self, start_p: Union[Vec3, Tuple], end_p: Union[Vec3, Tuple], color, thickness: float):
+        assert self.mode == RENDER_MODE_ONSCREEN, "Can not call this API in render mode: {}".format(self.mode)
+        start_p = [*start_p]
+        end_p = [*end_p]
+        start_p[1] *= 1
+        end_p[1] *= 1
         line_seg = LineSegs("interface")
         line_seg.setColor(*color)
-        line_seg.moveTo(start_p)
-        line_seg.drawTo(end_p)
+        line_seg.moveTo(Vec3(*start_p))
+        line_seg.drawTo(Vec3(*end_p))
         line_seg.setThickness(thickness)
         np = NodePath(line_seg.create(False))
-        np.reparentTo(self.render)
-        # TODO(PZH): This NP is not removed.
+        # np.reparentTo(self.render)
+        return np
+
+    def show_coordinates(self):
+        if len(self.coordinate_line) > 0:
+            return
+        # x direction = red
+        np_x = self.add_line(Vec3(0, 0, 0.1), Vec3(100, 0, 0.1), color=[1, 0, 0, 1], thickness=2)
+        np_x.reparentTo(self.render)
+        # y direction = blue
+        np_y = self.add_line(Vec3(0, 0, 0.1), Vec3(0, 50, 0.1), color=[0, 1, 0, 1], thickness=2)
+        np_y.reparentTo(self.render)
+        self.coordinate_line.append(np_x)
+        self.coordinate_line.append(np_y)
+
+    def remove_coordinates(self):
+        for line in self.coordinate_line:
+            line.detachNode()
+            line.removeNode()
+
+    def set_coordinates_indicator_pos(self, pos):
+        if len(self.coordinate_line) == 0:
+            return
+        for line in self.coordinate_line:
+            line.setPos(pos[0], pos[1], 0)
+
+    @property
+    def use_render_pipeline(self):
+        return self.global_config["render_pipeline"] and not self.mode == RENDER_MODE_NONE
+
+    def reload_shader(self):
+        if self.render_pipeline is not None:
+            self.render_pipeline.reload_shaders()
 
 
 if __name__ == "__main__":

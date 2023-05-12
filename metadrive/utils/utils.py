@@ -1,9 +1,13 @@
 import copy
+import time
+
+import numpy as np
 import datetime
 import logging
 import os
 import sys
 
+import numpy as np
 from panda3d.bullet import BulletBodyNode
 
 
@@ -31,6 +35,14 @@ def recursive_equal(data1, data2, need_assert=False):
     if isinstance(data2, Config):
         data2 = data2.get_dict()
 
+    if isinstance(data1, np.ndarray):
+        tmp = np.asarray(data2)
+        return np.all(data1 == tmp)
+
+    if isinstance(data2, np.ndarray):
+        tmp = np.asarray(data1)
+        return np.all(tmp == data2)
+
     if isinstance(data1, dict):
         is_ins = isinstance(data2, dict)
         key_right = set(data1.keys()) == set(data2.keys())
@@ -43,9 +55,9 @@ def recursive_equal(data1, data2, need_assert=False):
             ret.append(recursive_equal(data1[k], data2[k], need_assert=need_assert))
         return all(ret)
 
-    elif isinstance(data1, list):
+    elif isinstance(data1, (list, tuple)):
         len_right = len(data1) == len(data2)
-        is_ins = isinstance(data2, list)
+        is_ins = isinstance(data2, (list, tuple))
         if need_assert:
             assert len_right and is_ins, (len(data1), len(data2), data1, data2)
         if not (is_ins and len_right):
@@ -54,7 +66,11 @@ def recursive_equal(data1, data2, need_assert=False):
         for i in range(len(data1)):
             ret.append(recursive_equal(data1[i], data2[i], need_assert=need_assert))
         return all(ret)
-
+    elif isinstance(data1, np.ndarray):
+        ret = np.isclose(data1, data2).all()
+        if need_assert:
+            assert ret, (type(data1), type(data2), data1, data2)
+        return ret
     else:
         ret = data1 == data2
         if need_assert:
@@ -171,3 +187,34 @@ def get_object_from_node(node: BulletBodyNode):
         return get_object(ret)[ret]
     else:
         return ret
+
+
+def is_map_related_instance(obj):
+    from metadrive.component.block.base_block import BaseBlock
+    from metadrive.component.map.base_map import BaseMap
+    return True if isinstance(obj, BaseBlock) or isinstance(obj, BaseMap) else False
+
+
+def is_map_related_class(object_class):
+    from metadrive.component.block.base_block import BaseBlock
+    from metadrive.component.map.base_map import BaseMap
+    return True if issubclass(object_class, BaseBlock) or issubclass(object_class, BaseMap) else False
+
+
+def dict_recursive_remove_array(d):
+    if isinstance(d, np.ndarray):
+        return d.tolist()
+    if isinstance(d, dict):
+        for k in d.keys():
+            d[k] = dict_recursive_remove_array(d[k])
+    return d
+
+
+def time_me(fn):
+    def _wrapper(*args, **kwargs):
+        start = time.time()
+        ret = fn(*args, **kwargs)
+        print("function: %s cost %s second" % (fn.__name__, time.time() - start))
+        return ret
+
+    return _wrapper

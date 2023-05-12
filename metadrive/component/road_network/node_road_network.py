@@ -1,4 +1,5 @@
 import copy
+from metadrive.scenario.scenario_description import ScenarioDescription as SD
 import logging
 from typing import List, Tuple, Dict
 
@@ -6,13 +7,62 @@ from metadrive.component.lane.abs_lane import AbstractLane
 from metadrive.component.road_network.base_road_network import BaseRoadNetwork
 from metadrive.component.road_network.road import Road
 from metadrive.constants import Decoration
-from metadrive.utils.math_utils import get_boxes_bounding_box
-from metadrive.utils.scene_utils import get_lanes_bounding_box
+from metadrive.utils.math import get_boxes_bounding_box
+from metadrive.utils.pg.utils import get_lanes_bounding_box
 
 logger = logging.getLogger(__name__)
 
 LaneIndex = Tuple[str, str, int]
 Route = List[LaneIndex]
+
+
+class GraphLookupTable:
+    def __init__(self, graph, debug):
+        self.graph = graph
+        self.debug = debug
+
+    def get(self, position, return_all):
+        log = dict()
+        count = 0
+        for _, (_from, to_dict) in enumerate(self.graph.items()):
+            if _from == "decoration":
+                continue
+            for lanes_id, lanes in to_dict.items():
+                lane = next(iter(lanes))
+                log[count] = (lane.distance(position), (_from, lanes_id))
+                count += 1
+
+        distance_index_mapping = []
+        for rank, candidate_count in enumerate(sorted(log, key=lambda key: log[key][0])):
+            first_lane_distance, (section_id, lanes_id) = log[candidate_count]
+            lanes = self.graph[section_id][lanes_id]
+            for lane_id, lane in enumerate(lanes):
+                if lanes_id == Decoration.start:
+                    continue
+                if lane_id == 0:
+                    dist = first_lane_distance
+                else:
+                    dist = lane.distance(position)
+                distance_index_mapping.append((dist, (section_id, lanes_id, lane_id)))
+            # if rank > 10:
+            #     # Take first rank 5 lanes into consideration. The number may related to the number of
+            #     # lanes in intersection. We have 3 lanes in intersection, so computing the first 4 ranks can make
+            #     # thing work. We choose take first 5 lanes into consideration.
+            #     # In futurem we shall refactor the whole system, so this vulnerable code would be removed.
+            #     break
+        if self.graph.get(Decoration.start, False):
+            for id, lane in enumerate(self.graph[Decoration.start][Decoration.end]):
+                dist = lane.distance(position)
+                distance_index_mapping.append((dist, (Decoration.start, Decoration.end, id)))
+
+        distance_index_mapping = sorted(distance_index_mapping, key=lambda d: d[0])
+        if return_all:
+            return distance_index_mapping
+        else:
+            ret_ind = 0
+            index = distance_index_mapping[ret_ind][1]
+            distance = distance_index_mapping[ret_ind][0]
+            return index, distance
 
 
 class NodeRoadNetwork(BaseRoadNetwork):
@@ -220,51 +270,28 @@ class NodeRoadNetwork(BaseRoadNetwork):
         assert start != goal
         return next(self.bfs_paths(start_road_node, goal), [])
 
+    def get_map_features(self, interval=2):
+        from metadrive.type import MetaDriveType
 
-class GraphLookupTable:
-    def __init__(self, graph, debug):
-        self.graph = graph
-        self.debug = debug
+        ret = {}
+        for _from, _to_dict in self.graph.items():
+            for _to, lanes in _to_dict.items():
+                for k, lane in enumerate(lanes):
+                    ret["{}".format(lane.index)] = {
+                        SD.POLYLINE: lane.get_polyline(interval),
+                        SD.POLYGON: lane.polygon,
+                        SD.TYPE: MetaDriveType.LANE_SURFACE_STREET,
+                        "speed_limit_kmh": lane.speed_limit
+                    }
+        return ret
 
-    def get(self, position, return_all):
-        log = dict()
-        count = 0
-        for _, (_from, to_dict) in enumerate(self.graph.items()):
-            if _from == "decoration":
-                continue
-            for lanes_id, lanes in to_dict.items():
-                lane = next(iter(lanes))
-                log[count] = (lane.distance(position), (_from, lanes_id))
-                count += 1
-
-        distance_index_mapping = []
-        for rank, candidate_count in enumerate(sorted(log, key=lambda key: log[key][0])):
-            first_lane_distance, (section_id, lanes_id) = log[candidate_count]
-            lanes = self.graph[section_id][lanes_id]
-            for lane_id, lane in enumerate(lanes):
-                if lanes_id == Decoration.start:
-                    continue
-                if lane_id == 0:
-                    dist = first_lane_distance
-                else:
-                    dist = lane.distance(position)
-                distance_index_mapping.append((dist, (section_id, lanes_id, lane_id)))
-            # if rank > 10:
-            #     # Take first rank 5 lanes into consideration. The number may related to the number of
-            #     # lanes in intersection. We have 3 lanes in intersection, so computing the first 4 ranks can make
-            #     # thing work. We choose take first 5 lanes into consideration.
-            #     # In futurem we shall refactor the whole system, so this vulnerable code would be removed.
-            #     break
-        if self.graph.get(Decoration.start, False):
-            for id, lane in enumerate(self.graph[Decoration.start][Decoration.end]):
-                dist = lane.distance(position)
-                distance_index_mapping.append((dist, (Decoration.start, Decoration.end, id)))
-
-        distance_index_mapping = sorted(distance_index_mapping, key=lambda d: d[0])
-        if return_all:
-            return distance_index_mapping
-        else:
-            ret_ind = 0
-            index = distance_index_mapping[ret_ind][1]
-            distance = distance_index_mapping[ret_ind][0]
-            return index, distance
+    def get_all_lanes(self):
+        """
+        This function will return all lanes in the road network
+        :return: list of lanes
+        """
+        ret = []
+        for _from, _to_dict in self.graph.items():
+            for _to, lanes in _to_dict.items():
+                ret += lanes
+        return ret

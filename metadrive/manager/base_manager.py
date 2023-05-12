@@ -72,6 +72,8 @@ class BaseManager(Randomizable):
     def clear_objects(self, *args, **kwargs):
         """
         Same as the function in engine, clear objects, Return exclude object ids
+
+        filter: A list of object ids or a function returning a list of object id
         """
         exclude_objects = self.engine.clear_objects(*args, **kwargs)
         for obj in exclude_objects:
@@ -93,9 +95,14 @@ class BaseManager(Randomizable):
     def add_policy(self, object_id, policy_class, *policy_args, **policy_kwargs):
         return self.engine.add_policy(object_id, policy_class, *policy_args, **policy_kwargs)
 
+    def get_policy(self, object_id):
+        return self.engine.get_policy(object_id)
+
+    def has_policy(self, object_id, policy_cls=None):
+        return self.engine.has_policy(object_id, policy_cls)
+
     def get_state(self):
         """This function will be called by RecordManager to collect manager state, usually some mappings"""
-        assert self.episode_step == 0, "This func can only be called after env.reset() without any env.step() called"
         return {"spawned_objects": {name: v.class_name for name, v in self.spawned_objects.items()}}
 
     def set_state(self, state: dict, old_name_to_current=None):
@@ -123,3 +130,11 @@ class BaseManager(Randomizable):
     def engine(self):
         from metadrive.engine.engine_utils import get_engine
         return get_engine()
+
+    def get_metadata(self):
+        """
+        This function will store the metadata of each manager before the episode start, usually, we put some raw real
+        world data in it, so that we won't lose information
+        """
+        assert self.episode_step == 0, "This func can only be called after env.reset() without any env.step() called"
+        return {}

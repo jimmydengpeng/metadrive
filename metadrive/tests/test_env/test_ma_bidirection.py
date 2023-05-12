@@ -1,11 +1,13 @@
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.policy.idm_policy import IDMPolicy
+from metadrive.envs.marl_envs.multi_agent_metadrive import MULTI_AGENT_METADRIVE_DEFAULT_CONFIG
+MULTI_AGENT_METADRIVE_DEFAULT_CONFIG["force_seed_spawn_manager"] = True
 
 
 def test_ma_bidirection_idm(render=False):
     env = MetaDriveEnv(
         {
-            "environment_num": 1,
+            "num_scenarios": 1,
             "traffic_density": 0,
             "start_seed": 22,
             "manual_control": False,
@@ -18,7 +20,7 @@ def test_ma_bidirection_idm(render=False):
     try:
         o = env.reset()
         env.vehicle.set_velocity([1, 0.1], 10)
-        print(env.vehicle.speed)
+        # print(env.vehicle.speed)
         pass_test = False
         for s in range(1, 10000):
             o, r, d, info = env.step(env.action_space.sample())

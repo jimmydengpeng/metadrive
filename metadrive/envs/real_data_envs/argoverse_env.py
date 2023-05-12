@@ -24,7 +24,7 @@ class ArgoversePGMapManager(PGMapManager):
             self.engine.global_config["map_config"].update(
                 {
                     "city": argoverse_city,
-                    "center": ArgoverseMap.metadrive_position(argoverse_map_center),
+                    "center": ArgoverseMap.metadrive_vector(argoverse_map_center),
                     "radius": argoverse_map_radius
                 }
             )
@@ -33,6 +33,8 @@ class ArgoversePGMapManager(PGMapManager):
 
 
 class ArgoverseEnv(MetaDriveEnv):
+    raise DeprecationWarning("Due to poor data, we are not maintaining this environment now!")
+
     def _post_process_config(self, config):
         config = super(ArgoverseEnv, self)._post_process_config(config)
         config["vehicle_config"]["spawn_lane_index"] = argoverse_spawn_lane_index

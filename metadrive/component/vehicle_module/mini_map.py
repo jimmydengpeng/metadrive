@@ -7,7 +7,7 @@ from metadrive.engine.engine_utils import get_global_config, engine_initialized
 
 class MiniMap(BaseCamera):
     CAM_MASK = CamMask.MiniMap
-    display_region_size = [0., 1 / 3, BaseCamera.display_bottom, BaseCamera.display_top]
+    display_region_size = [0., 1 / 3, 0.8, 1.0]
 
     def __init__(self):
         assert engine_initialized(), "You should initialize engine before adding camera to vehicle"
@@ -20,5 +20,5 @@ class MiniMap(BaseCamera):
         lens = self.get_lens()
 
         cam.setZ(height)
-        cam.lookAt(Vec3(0, 20, 0))
+        cam.lookAt(Vec3(20, 0, 0))
         lens.setAspectRatio(2.0)

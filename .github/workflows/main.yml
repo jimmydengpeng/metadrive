@@ -14,22 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Python 3.7
+      - name: Set up Python 3.9
         uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: 3.9
       - name: Check code style
         run: |
           pip install "yapf==0.30.0"
           bash format.sh --test
-  blackbox_test:
+
+  test_functionality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Python 3.7
+      - name: Set up Python 3.9
         uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: 3.9
       - name: Blackbox tests
         run: |
           pip install cython
@@ -39,7 +40,84 @@ jobs:
           pip install pytest-cov
           pip install ray
           cd metadrive/
-          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/
+          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/test_functionality
+
+  test_environment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Blackbox tests
+        run: |
+          pip install cython
+          pip install numpy
+          pip install -e .
+          pip install pytest
+          pip install pytest-cov
+          pip install ray
+          cd metadrive/
+          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/test_env
+
+  test_policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Blackbox tests
+        run: |
+          pip install cython
+          pip install numpy
+          pip install -e .
+          pip install pytest
+          pip install pytest-cov
+          pip install ray
+          cd metadrive/
+          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/test_policy
+
+  test_component:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Blackbox tests
+        run: |
+          pip install cython
+          pip install numpy
+          pip install -e .
+          pip install pytest
+          pip install pytest-cov
+          pip install ray
+          cd metadrive/
+          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/test_component
+
+  test_export_record_scenario:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Blackbox tests
+        run: |
+          pip install cython
+          pip install numpy
+          pip install -e .
+          pip install pytest
+          pip install pytest-cov
+          pip install ray
+          cd metadrive/
+          pytest --cov=./ --cov-config=.coveragerc --cov-report=xml -sv tests/test_export_record_scenario
+
 #      - name: Upload coverage to Codecov
 #        uses: codecov/codecov-action@v1
 #        with:

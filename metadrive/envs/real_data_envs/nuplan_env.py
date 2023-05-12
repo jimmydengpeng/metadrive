@@ -1,11 +1,14 @@
 import logging
+import sys
 
 import numpy as np
 
+from metadrive.component.vehicle_module.vehicle_panel import VehiclePanel
 from metadrive.component.vehicle_navigation_module.trajectory_navigation import NuPlanTrajectoryNavigation
 from metadrive.constants import TerminationState
 from metadrive.envs.base_env import BaseEnv
 from metadrive.manager.nuplan_data_manager import NuPlanDataManager
+from metadrive.manager.nuplan_light_manager import NuPlanLightManager
 from metadrive.manager.nuplan_map_manager import NuPlanMapManager
 from metadrive.manager.nuplan_traffic_manager import NuPlanTrafficManager
 from metadrive.obs.real_env_observation import NuPlanObservation
@@ -13,6 +16,7 @@ from metadrive.obs.state_obs import LidarStateObservation
 from metadrive.policy.replay_policy import NuPlanReplayEgoCarPolicy
 from metadrive.utils import clip
 from metadrive.utils import get_np_random
+from metadrive.utils.coordinates_shift import nuplan_to_metadrive_vector
 
 NUPLAN_ENV_CONFIG = dict(
     # ===== Dataset Config =====
@@ -23,16 +27,26 @@ NUPLAN_ENV_CONFIG = dict(
         "scenario_filter.log_names=['2021.07.16.20.45.29_veh-35_01095_01486']",
         'scenario_filter.limit_total_scenarios=2800',  # use 2 total scenarios
     ],
-    start_case_index=0,
-    case_num=100,
+    start_scenario_index=0,
+    num_scenarios=100,
     store_map=True,
-    store_map_buffer_size=200,
     sequential_seed=False,
 
+    # ===== Map Config =====
+    city_map_radius=20000,  # load the whole map, setting as large as possible
+    scenario_radius=250,  # radius for per scenario
+    load_city_map=False,
+    map_centers={
+        'us-nv-las-vegas-strip': nuplan_to_metadrive_vector([664396, 3997613]),
+        'sg-one-north': nuplan_to_metadrive_vector([365427, 143908]),
+        'us-pa-pittsburgh-hazelwood': nuplan_to_metadrive_vector([587631, 4475539])
+    },
+
     # ===== Traffic =====
+    no_pedestrian=True,
     no_traffic=False,
-    replay=True,
-    no_static_traffic_vehicle=False,
+    no_light=False,
+    reactive_traffic=False,
 
     # ===== Agent config =====
     vehicle_config=dict(
@@ -63,6 +77,9 @@ NUPLAN_ENV_CONFIG = dict(
     # ===== Termination Scheme =====
     out_of_route_done=False,
     crash_vehicle_done=True,
+
+    # ===== others =====
+    interface_panel=[VehiclePanel],  # for boosting efficiency
 )
 
 
@@ -116,32 +133,32 @@ class NuPlanEnv(BaseEnv):
         return
 
     def setup_engine(self):
-        self.in_stop = False
         super(NuPlanEnv, self).setup_engine()
         self.engine.register_manager("data_manager", NuPlanDataManager())
         self.engine.register_manager("map_manager", NuPlanMapManager())
-        if not self.config["no_traffic"]:
-            if not self.config['replay']:
-                raise ValueError
-                self.engine.register_manager("traffic_manager", NuPlanIDMTrafficManager())
-            else:
-                self.engine.register_manager("traffic_manager", NuPlanTrafficManager())
-        self.engine.accept("p", self.stop)
+        if not (self.config["no_traffic"] and self.config["no_pedestrian"]):
+            self.engine.register_manager("traffic_manager", NuPlanTrafficManager())
+        if not self.config["no_light"]:
+            self.engine.register_manager("light_manager", NuPlanLightManager())
         self.engine.accept("q", self.switch_to_third_person_view)
         self.engine.accept("b", self.switch_to_top_down_view)
         self.engine.accept("]", self.next_seed_reset)
         self.engine.accept("[", self.last_seed_reset)
 
     def next_seed_reset(self):
-        self.reset(self.current_seed + 1)
+        if self.current_seed + 1 < self.config["start_scenario_index"] + self.config["num_scenarios"]:
+            self.reset(self.current_seed + 1)
+        else:
+            logging.warning("Can't load next scenario! current seed is already the max scenario index")
 
     def last_seed_reset(self):
-        self.reset(self.current_seed - 1)
+        if self.current_seed - 1 >= self.config["start_scenario_index"]:
+            self.reset(self.current_seed - 1)
+        else:
+            logging.warning("Can't load last scenario! current seed is already the min scenario index")
 
     def step(self, actions):
         ret = super(NuPlanEnv, self).step(actions)
-        while self.in_stop:
-            self.engine.taskMgr.step()
         return ret
 
     def done_function(self, vehicle_id: str):
@@ -244,18 +261,19 @@ class NuPlanEnv(BaseEnv):
         elif self.config["sequential_seed"]:
             current_seed = self.engine.global_seed
             if current_seed is None:
-                current_seed = self.config["start_case_index"]
+                current_seed = self.config["start_scenario_index"]
             else:
                 current_seed += 1
-            if current_seed >= self.config["start_case_index"] + int(self.config["case_num"]):
-                current_seed = self.config["start_case_index"]
+            if current_seed >= self.config["start_scenario_index"] + int(self.config["num_scenarios"]):
+                current_seed = self.config["start_scenario_index"]
         else:
             current_seed = get_np_random(None).randint(
-                self.config["start_case_index"], self.config["start_case_index"] + int(self.config["case_num"])
+                self.config["start_scenario_index"],
+                self.config["start_scenario_index"] + int(self.config["num_scenarios"])
             )
 
-        assert self.config["start_case_index"] <= current_seed < \
-               self.config["start_case_index"] + self.config["case_num"], "Force seed range Error!"
+        assert self.config["start_scenario_index"] <= current_seed < \
+               self.config["start_scenario_index"] + self.config["num_scenarios"], "Force seed range Error!"
         self.seed(current_seed)
 
     def _is_out_of_road(self, vehicle):
@@ -267,65 +285,76 @@ class NuPlanEnv(BaseEnv):
         # ret = vehicle.crash_sidewalk
         # return ret
 
-    def stop(self):
-        self.in_stop = not self.in_stop
-
 
 if __name__ == "__main__":
     env = NuPlanEnv(
         {
             "use_render": True,
             "agent_policy": NuPlanReplayEgoCarPolicy,
-            "manual_control": True,
-            "replay": True,
+            # "manual_control": True,
             "no_traffic": False,
+            "no_pedestrian": False,
+            "no_light": False,
             # "debug": True,
-            # "debug_static_world": True,
-            # "no_traffic":True,
-            # "start_case_index": 192,
-            # "start_case_index": 1000,
-            # "waymo_data_directory": "E:\\PAMI_waymo_data\\idm_filtered\\test",
-            "window_size": (2400, 1600),
-            "start_case_index": 200,
-            "case_num": 2000,
+            "debug_static_world": False,
+            "debug_physics_world": False,
+            "load_city_map": True,
+            # "global_light": False,
+            "window_size": (1200, 800),
+            # "multi_thread_render_mode": "Cull/Draw",
+            "start_scenario_index": 0,
+            # "pstats": True,
+            "num_scenarios": 30,
+            "show_coordinates": False,
             "horizon": 1000,
+            # "show_fps": False,
             "vehicle_config": dict(
-                lidar=dict(num_lasers=120, distance=50, num_others=4),
+                lidar=dict(num_lasers=120, distance=50, num_others=0),
                 lane_line_detector=dict(num_lasers=12, distance=50),
                 side_detector=dict(num_lasers=160, distance=50),
-                # need_navigation=False
+                # show_lidar=True
+                show_navi_mark=False,
+                show_dest_mark=False,
+                no_wheel_friction=True,
             ),
-            # "show_interface":False
+            "show_interface": False,
+            "show_logo": False,
+            "force_render_fps": 40,
+            "show_fps": True,
+            "DATASET_PARAMS": [
+                # builder setting
+                "scenario_builder=nuplan_mini",
+                "scenario_builder.scenario_mapping.subsample_ratio_override=0.5",  # 10 hz
+
+                # filter
+                "scenario_filter=all_scenarios",  # simulate only one log
+                "scenario_filter.remove_invalid_goals=true",
+                "scenario_filter.shuffle=true",
+                "scenario_filter.log_names=['2021.07.16.20.45.29_veh-35_01095_01486']",
+                # "scenario_filter.scenario_types={}".format(all_scenario_types),
+                # "scenario_filter.scenario_tokens=[]",
+                # "scenario_filter.map_names=[]",
+                # "scenario_filter.num_scenarios_per_type=1",
+                # "scenario_filter.limit_total_scenarios=1000",
+                # "scenario_filter.expand_scenarios=true",
+                # "scenario_filter.limit_scenarios_per_type=10",  # use 10 scenarios per scenario type
+                "scenario_filter.timestamp_threshold_s=20",  # minial scenario duration (s)
+            ],
+            "show_mouse": True,
         }
     )
     success = []
-    for seed in range(300, 2000):
-        env.reset(force_seed=302)
+    env.reset()
+    for seed in range(len(env.engine.data_manager._nuplan_scenarios)):
+        env.reset()
+        # env.reset(seed)
         for i in range(env.engine.data_manager.current_scenario_length * 10):
             o, r, d, info = env.step([0, 0])
-            # assert env.observation_space.contains(o)
-            # c_lane = env.vehicle.lane
-            # long, lat, = c_lane.local_coordinates(env.vehicle.position)
-            # if env.config["use_render"]:
-            #     env.render(
-            #         text={
-            #             # "routing_lane_idx": env.engine._object_policies[env.vehicle.id].routing_target_lane.index,
-            #             # "lane_index": env.vehicle.lane_index,
-            #             # "current_ckpt_index": env.vehicle.navigation.current_checkpoint_lane_index,
-            #             # "next_ckpt_index": env.vehicle.navigation.next_checkpoint_lane_index,
-            #             # "ckpts": env.vehicle.navigation.checkpoints,
-            #             # "lane_heading": c_lane.heading_theta_at(long),
-            #             # "long": long,
-            #             # "lat": lat,
-            #             # "v_heading": env.vehicle.heading_theta,
-            #             "obs_shape": len(o),
-            #             "lateral": env.observations["default_agent"].lateral_dist,
-            #             "seed": env.engine.global_seed + env.config["start_case_index"],
-            #             "reward": r,
-            #         }
-            #     )
-            #
-            # if d:
-            #     if info["arrive_dest"]:
-            #         print("seed:{}, success".format(env.engine.global_random_seed))
-            #     break
+            env.render(text={"seed": env.current_seed})
+            if info["replay_done"]:
+                break
+    sys.exit()
+
+# cull/draw camera
+# draw set_state
+# 2021.09.16.15.12.03_veh-42_01037_01434: 8/14

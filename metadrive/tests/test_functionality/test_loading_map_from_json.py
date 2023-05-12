@@ -2,7 +2,7 @@ import json
 
 from metadrive import MetaDriveEnv
 from metadrive.utils import recursive_equal
-from metadrive.utils.generate_maps import generate_maps
+from metadrive.utils.pg.generate_maps import generate_maps
 
 
 def _test_loaded_map_alignment():
@@ -10,7 +10,7 @@ def _test_loaded_map_alignment():
     # Generate the second round
     # for seed in [0, 1, 2, 100, 200, 300, 9999]:
     for seed in [0, 1, 2, 99]:
-        env_config = {"start_seed": seed, "environment_num": 1}
+        env_config = {"start_seed": seed, "num_scenarios": 1}
         generate_maps(MetaDriveEnv, env_config.copy(), json_file_path="seed{}_v1.json".format(seed))
         # generate_maps(MetaDriveEnv, env_config.copy(), json_file_path="seed{}_v2.json".format(seed))
         with open("seed{}_v1.json".format(seed), "r") as f:
@@ -24,12 +24,12 @@ def _test_loaded_map_alignment():
         map_data_in_json = saved_v1["map_data"][str(seed)]
         e.close()
 
-        e = MetaDriveEnv({"start_seed": seed, "environment_num": 1})
+        e = MetaDriveEnv({"start_seed": seed, "num_scenarios": 1})
         e.reset()
         map_data_realtime_generate = e.current_map.get_meta_data()
         e.close()
 
-        e = MetaDriveEnv({"start_seed": seed, "environment_num": 10})
+        e = MetaDriveEnv({"start_seed": seed, "num_scenarios": 10})
         e.reset(force_seed=seed)
         map_data_realtime_generate_in_multiple_maps = e.current_map.get_meta_data()
         e.close()
@@ -46,11 +46,11 @@ def _test_loaded_map_alignment():
         # Assert json and generated maps in
         recursive_equal(map_data_in_json, map_data_realtime_generate_in_multiple_maps, True)
 
-    print(saved_v1)
+    # print(saved_v1)
 
 
 def test_map_buffering():
-    env_config = {"environment_num": 5}
+    env_config = {"num_scenarios": 5}
     e = MetaDriveEnv(env_config)
     try:
         for i in range(10):

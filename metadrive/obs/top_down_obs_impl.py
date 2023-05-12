@@ -4,9 +4,9 @@ import numpy as np
 
 from metadrive.component.lane.circular_lane import CircularLane
 from metadrive.component.lane.straight_lane import StraightLane
-from metadrive.constants import LineType, LineColor
+from metadrive.constants import PGLineType, PGLineColor
 from metadrive.utils.utils import import_pygame
-from metadrive.utils.waymo_utils.waymo_utils import RoadLineType, RoadEdgeType
+from metadrive.type import MetaDriveType
 
 PositionType = Union[Tuple[float, float], np.ndarray]
 pygame = import_pygame()
@@ -264,26 +264,26 @@ class LaneGraphics:
         s0 = (int(s_origin) // cls.STRIPE_SPACING - stripes_count // 2) * cls.STRIPE_SPACING
         for side in range(side):
             if use_line_color:
-                if lane.line_colors[side] == LineColor.YELLOW and lane.line_types[side] == LineType.CONTINUOUS:
+                if lane.line_colors[side] == PGLineColor.YELLOW and lane.line_types[side] == PGLineType.CONTINUOUS:
                     color = (0, 80, 220)
-                elif lane.line_types[side] == LineType.SIDE:
+                elif lane.line_types[side] == PGLineType.SIDE:
                     color = (160, 160, 160)
                 else:
                     color = (80, 80, 80)
-            if lane.line_types[side] == LineType.BROKEN:
+            if lane.line_types[side] == PGLineType.BROKEN:
                 cls.striped_line(lane, surface, stripes_count, s0, side, color=color)
             # circular side or continuous, it is same now
-            elif lane.line_types[side] == LineType.CONTINUOUS and isinstance(lane, CircularLane):
+            elif lane.line_types[side] == PGLineType.CONTINUOUS and isinstance(lane, CircularLane):
                 cls.continuous_curve(lane, surface, stripes_count, s0, side, color=color)
-            elif lane.line_types[side] == LineType.SIDE and isinstance(lane, CircularLane):
+            elif lane.line_types[side] == PGLineType.SIDE and isinstance(lane, CircularLane):
                 cls.continuous_curve(lane, surface, stripes_count, s0, side, color=color)
             # the line of continuous straight and side straight is same now
-            elif (lane.line_types[side] == LineType.CONTINUOUS) and isinstance(lane, StraightLane):
+            elif (lane.line_types[side] == PGLineType.CONTINUOUS) and isinstance(lane, StraightLane):
                 cls.continuous_line(lane, surface, stripes_count, s0, side, color=color)
-            elif (lane.line_types[side] == LineType.SIDE) and isinstance(lane, StraightLane):
+            elif (lane.line_types[side] == PGLineType.SIDE) and isinstance(lane, StraightLane):
                 cls.continuous_line(lane, surface, stripes_count, s0, side, color=color)
-            # special case
-            elif lane.line_types[side] == LineType.NONE:
+            # special scenario
+            elif lane.line_types[side] == PGLineType.NONE:
                 continue
             else:
                 raise ValueError("I don't know how to draw this line type: {}".format(lane.line_types[side]))
@@ -298,13 +298,13 @@ class LaneGraphics:
         :param two_side: draw two sides of the lane, or only one side
         """
         lane = waymo_poly_line
-        if RoadLineType.is_yellow(type):
+        if MetaDriveType.is_yellow_line(type):
             color = (0, 80, 220)
-        elif RoadEdgeType.is_road_edge(type):
+        elif MetaDriveType.is_road_edge(type):
             color = (160, 160, 160)
         else:
             color = (80, 80, 80)
-        if RoadLineType.is_road_line(type) or RoadEdgeType.is_road_edge(type):
+        if MetaDriveType.is_road_line(type) or MetaDriveType.is_road_edge(type):
             if len(waymo_poly_line.segment_property) <= 1:
                 return
             stripes_count = int(
@@ -313,7 +313,7 @@ class LaneGraphics:
             s_origin, _ = lane.local_coordinates(surface.origin)
             s0 = (int(s_origin) // cls.STRIPE_SPACING - stripes_count // 2) * cls.STRIPE_SPACING
 
-            if RoadLineType.is_broken(type):
+            if MetaDriveType.is_broken_line(type):
                 starts = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING
                 ends = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING + cls.STRIPE_LENGTH
                 lats = [0 for s in starts]
@@ -324,6 +324,32 @@ class LaneGraphics:
             cls.draw_stripes(lane, surface, starts, ends, lats, color=color)
         elif type == "center_lane" or type is None:
             pass
+
+    @classmethod
+    def display_nuplan(cls, poly_line, type, color, surface) -> None:
+        """
+        Display a lane on a surface.
+        """
+        lane = poly_line
+        if color == PGLineColor.YELLOW:
+            color = (0, 80, 220)
+        else:
+            color = (80, 80, 80)
+        if len(poly_line.segment_property) <= 1:
+            return
+        stripes_count = int(2 * (surface.get_height() + surface.get_width()) / (cls.STRIPE_SPACING * surface.scaling))
+        s_origin, _ = lane.local_coordinates(surface.origin)
+        s0 = (int(s_origin) // cls.STRIPE_SPACING - stripes_count // 2) * cls.STRIPE_SPACING
+
+        if type == PGLineType.BROKEN:
+            starts = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING
+            ends = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING + cls.STRIPE_LENGTH
+            lats = [0 for s in starts]
+        else:
+            starts = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING
+            ends = s0 + np.arange(stripes_count) * cls.STRIPE_SPACING + cls.STRIPE_SPACING
+            lats = [0 for s in starts]
+        cls.draw_stripes(lane, surface, starts, ends, lats, color=color)
 
     @classmethod
     def striped_line(cls, lane, surface, stripes_count: int, longitudinal: float, side: int, color=None) -> None:
@@ -397,7 +423,7 @@ class LaneGraphics:
                 )
 
     @classmethod
-    def simple_draw(cls, lane, surface, color=(255, 255, 255)):
+    def draw_drivable_area(cls, lane, surface, color=(255, 255, 255)):
         from metadrive.component.pgblock.pg_block import PGBlock
         segment_num = int(lane.length / PGBlock.LANE_SEGMENT_LENGTH)
         width = lane.width

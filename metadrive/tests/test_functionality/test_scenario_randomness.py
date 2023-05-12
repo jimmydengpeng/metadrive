@@ -4,7 +4,7 @@ from metadrive.envs.safe_metadrive_env import SafeMetaDriveEnv
 from metadrive.manager.traffic_manager import TrafficMode
 from metadrive.policy.idm_policy import IDMPolicy
 from metadrive.utils import setup_logger
-from metadrive.utils.math_utils import norm
+from metadrive.utils.math import norm
 
 
 def assert_equal_pos(data_1, data_2):
@@ -19,10 +19,10 @@ def test_scenario_randomness(vis=False):
     setup_logger(True)
     cfg = {
         "accident_prob": 0.8,
-        "environment_num": 1,
+        "num_scenarios": 1,
         "traffic_density": 0.1,
         "start_seed": 1000,
-        "manual_control": True,
+        "manual_control": False,
         "use_render": vis,
         "agent_policy": IDMPolicy,
         "traffic_mode": TrafficMode.Trigger,

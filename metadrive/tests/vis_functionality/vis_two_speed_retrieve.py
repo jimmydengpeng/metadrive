@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     env = MetaDriveEnv(
         {
-            "environment_num": 4,
+            "num_scenarios": 4,
             "traffic_density": 0.0,
             "use_render": True,
             "map_config": {
@@ -25,11 +25,11 @@ if __name__ == "__main__":
     env.reset()
     for i in range(1, 100000):
         o, r, d, info = env.step(acc)
-        print(
-            "new:{}, old:{}, diff:{}".format(
-                env.vehicle.speed, env.vehicle.system.get_current_speed_km_hour(),
-                env.vehicle.speed - env.vehicle.system.get_current_speed_km_hour()
-            )
-        )
+        # print(
+        #     "new:{}, old:{}, diff:{}".format(
+        #         env.vehicle.speed_km_h, env.vehicle.system.get_current_speed_km_hour(),
+        #         env.vehicle.speed_km_h - env.vehicle.system.get_current_speed_km_hour()
+        #     )
+        # )
         env.render("Test: {}".format(i))
     env.close()

@@ -3,7 +3,7 @@ import numpy as np
 
 from metadrive.component.vehicle_navigation_module.node_network_navigation import NodeNetworkNavigation
 from metadrive.obs.observation_base import ObservationBase
-from metadrive.utils.math_utils import clip, norm
+from metadrive.utils.math import clip, norm
 
 
 class StateObservation(ObservationBase):
@@ -85,6 +85,7 @@ class StateObservation(ObservationBase):
             info += [clip(lateral_to_left, 0.0, 1.0), clip(lateral_to_right, 0.0, 1.0)]
 
         if vehicle.navigation is None or vehicle.navigation.current_ref_lanes is None:
+            # TODO LQY, consider adding observations
             info += [0] * 5
         else:
             current_reference_lane = vehicle.navigation.current_ref_lanes[-1]
@@ -94,7 +95,7 @@ class StateObservation(ObservationBase):
                 vehicle.heading_diff(current_reference_lane),
 
                 # The velocity of target vehicle
-                clip((vehicle.speed + 1) / (vehicle.max_speed + 1), 0.0, 1.0),
+                clip((vehicle.speed_km_h + 1) / (vehicle.max_speed_km_h + 1), 0.0, 1.0),
 
                 # Current steering
                 clip((vehicle.steering / vehicle.MAX_STEERING + 1) / 2, 0.0, 1.0),

@@ -3,11 +3,11 @@ import time
 from metadrive.envs.top_down_env import TopDownMetaDriveEnvV2
 
 if __name__ == '__main__':
-    env = TopDownMetaDriveEnvV2(dict(environment_num=10))
+    env = TopDownMetaDriveEnvV2(dict(num_scenarios=10))
     o = env.reset()
     start = time.time()
     action = [0.0, 0.1]
-    print(o.shape)
+    # print(o.shape)
     for s in range(10000):
         o, r, d, i = env.step(action)
         if d:
@@ -19,4 +19,4 @@ if __name__ == '__main__':
                     time.time() - start, (s + 1) / (time.time() - start)
                 )
             )
-    print(f"(TopDownEnv) Total Time Elapse: {time.time() - start}")
+    # print(f"(TopDownEnv) Total Time Elapse: {time.time() - start}")

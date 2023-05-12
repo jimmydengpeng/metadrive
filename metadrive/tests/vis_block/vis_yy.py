@@ -7,7 +7,7 @@ if __name__ == "__main__":
     setup_logger(True)
     env = MetaDriveEnv(
         {
-            "environment_num": 1,
+            "num_scenarios": 1,
             "traffic_density": 0.1,
             "traffic_mode": "hybrid",
             "start_seed": 5,
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     )
 
     o = env.reset()
-    print("vehicle num", len(env.engine.traffic_manager.vehicles))
+    # print("vehicle num", len(env.engine.traffic_manager.vehicles))
     for i in range(1, 100000):
         o, r, d, info = env.step([0, 1])
         info["fuel"] = env.vehicle.energy_consumption
@@ -50,6 +50,6 @@ if __name__ == "__main__":
             }
         )
         if d:
-            print("Reset")
+            # print("Reset")
             env.reset()
     env.close()

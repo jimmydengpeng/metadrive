@@ -2,7 +2,7 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 
 if __name__ == "__main__":
     config = {
-        "environment_num": 10,
+        "num_scenarios": 10,
         "traffic_density": .0,
         # "use_render":True,
         "map": "SSSSS",
@@ -25,11 +25,11 @@ if __name__ == "__main__":
     a = [.0, 1.]
     for s in range(1, 100000):
         o, r, d, info = env.step(a)
-        if env.vehicle.speed > 100:
+        if env.vehicle.speed_km_h > 100:
             a = [0, -1]
-            print("0-100 km/h acc use time:{}".format(s * 0.1))
+            # print("0-100 km/h acc use time:{}".format(s * 0.1))
             pre_pos = env.vehicle.position[0]
-        if a == [0, -1] and env.vehicle.speed < 1:
-            print("0-100 brake use dist:{}".format(env.vehicle.position[0] - pre_pos))
+        if a == [0, -1] and env.vehicle.speed_km_h < 1:
+            # print("0-100 brake use dist:{}".format(env.vehicle.position[0] - pre_pos))
             break
     env.close()

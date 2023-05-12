@@ -1,7 +1,6 @@
 from collections import deque
 
 from metadrive.engine.engine_utils import get_engine
-from collections import Iterable
 import numpy as np
 
 
@@ -71,8 +70,8 @@ class DataBuffer:
 
     def __setitem__(self, key, value):
         # This should be checked in map manager instead of here
-        # map_num = get_engine().global_config["case_num"]
-        # start = get_engine().global_config["start_case_index"]
+        # map_num = get_engine().global_config["num_scenarios"]
+        # start = get_engine().global_config["start_scenario_index"]
         #
         # assert start <= key < start + map_num, (start, key, start + map_num)
 

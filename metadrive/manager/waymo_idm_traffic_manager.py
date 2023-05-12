@@ -1,13 +1,13 @@
 import copy
+from metadrive.scenario.parse_object_state import parse_full_trajectory, parse_object_state
 from collections import namedtuple, OrderedDict
 
 import numpy as np
-
-from metadrive.component.lane.waymo_lane import PointLane
+from metadrive.type import MetaDriveType
+from metadrive.component.lane.point_lane import PointLane
 from metadrive.component.vehicle.vehicle_type import SVehicle
 from metadrive.manager.waymo_traffic_manager import WaymoTrafficManager
 from metadrive.policy.idm_policy import WaymoIDMPolicy
-from metadrive.utils.waymo_utils.waymo_utils import AgentType
 
 static_vehicle_info = namedtuple("static_vehicle_info", "position heading")
 
@@ -24,6 +24,10 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
     MAX_HORIZON = 100
 
     def __init__(self):
+        raise DeprecationWarning(
+            "This class is deprecated now, "
+            "it is merged into WaymoTrafficManager (ScenarioTrafficManager)"
+        )
         super(WaymoIDMTrafficManager, self).__init__()
         self.seed_trajs = {}
         self.v_id_to_destination = OrderedDict()
@@ -40,12 +44,12 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
         if self.engine.global_random_seed not in self.seed_trajs:
             traffic_traj_data = {}
             for v_id, type_traj in self.current_traffic_data.items():
-                if type_traj["type"] == AgentType.VEHICLE and v_id != self.sdc_index:
-                    init_info = self.parse_vehicle_state(
-                        type_traj["state"], self.engine.global_config["traj_start_index"]
-                    )
-                    dest_info = self.parse_vehicle_state(
-                        type_traj["state"], self.engine.global_config["traj_end_index"], check_last_state=True
+                if MetaDriveType.is_vehicle(type_traj["type"]) and v_id != self.sdc_track_index:
+                    init_info = parse_object_state(type_traj, self.engine.global_config["traj_start_index"])
+                    dest_info = parse_object_state(
+                        type_traj,
+                        self.engine.global_config["traj_end_index"],
+                        check_last_state=True,
                     )
                     if not init_info["valid"]:
                         continue
@@ -53,7 +57,7 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
                         full_traj = static_vehicle_info(init_info["position"], init_info["heading"])
                         static = True
                     else:
-                        full_traj = self.parse_full_trajectory(type_traj["state"])
+                        full_traj = parse_full_trajectory(type_traj)
                         if len(full_traj) < self.MIN_DURATION:
                             full_traj = static_vehicle_info(init_info["position"], init_info["heading"])
                             static = True
@@ -68,10 +72,11 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
                         "is_sdc": False
                     }
 
-                elif type_traj["type"] == AgentType.VEHICLE and v_id == self.sdc_index:
+                elif MetaDriveType.is_vehicle(type_traj["type"]) and v_id == self.sdc_track_index:
                     # set Ego V velocity
-                    init_info = self.parse_vehicle_state(
-                        type_traj["state"], self.engine.global_config["traj_start_index"]
+                    init_info = parse_object_state(
+                        type_traj,
+                        self.engine.global_config["traj_start_index"],
                     )
                     traffic_traj_data["sdc"] = {
                         "traj": None,
@@ -83,7 +88,7 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
             self.seed_trajs[self.engine.global_random_seed] = traffic_traj_data
         policy_count = 0
         for v_traj_id, data in self.current_traffic_traj.items():
-            if data["static"] and self.engine.global_config["no_static_traffic_vehicle"]:
+            if data["static"] and self.engine.global_config["no_static_vehicles"]:
                 continue
             if v_traj_id == "sdc":
                 continue
@@ -132,7 +137,7 @@ class WaymoIDMTrafficManager(WaymoTrafficManager):
         for v in self.spawned_objects.values():
             if not self.engine.has_policy(v.name):
                 continue
-            if v.speed < 1:
+            if v.speed_km_h < 1:
                 self.v_id_to_stop_time[v.id] += 1
             else:
                 self.v_id_to_stop_time[v.id] = 0

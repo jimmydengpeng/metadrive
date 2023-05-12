@@ -10,14 +10,14 @@ from metadrive.component.pgblock.first_block import FirstPGBlock
 from metadrive.component.pgblock.parking_lot import ParkingLot
 from metadrive.component.pgblock.t_intersection import TInterSection
 from metadrive.component.road_network import Road
-from metadrive.constants import BodyName
+from metadrive.constants import MetaDriveType
 from metadrive.constants import CollisionGroup
 from metadrive.engine.engine_utils import get_engine
 from metadrive.envs.marl_envs.multi_agent_metadrive import MultiAgentMetaDrive
 from metadrive.manager.map_manager import PGMapManager
 from metadrive.utils import get_np_random, Config
-from metadrive.utils.coordinates_shift import panda_position, panda_heading
-from metadrive.utils.scene_utils import rect_region_detection
+from metadrive.utils.coordinates_shift import panda_vector, panda_heading
+from metadrive.utils.pg.utils import rect_region_detection
 
 MAParkingLotConfig = dict(
     in_spawn_roads=[
@@ -128,12 +128,12 @@ class ParkingLotSpawnManager(SpawnManager):
                 vis_body = engine.render.attach_new_node(BulletGhostNode("debug"))
                 vis_body.node().addShape(shape)
                 vis_body.setH(panda_heading(lane_heading))
-                vis_body.setPos(panda_position(spawn_point_position, z=2))
+                vis_body.setPos(panda_vector(spawn_point_position, z=2))
                 engine.physics_world.dynamic_world.attach(vis_body.node())
                 vis_body.node().setIntoCollideMask(CollisionGroup.AllOff)
                 bp.force_set("need_debug", False)
 
-            if not result.hasHit() or result.node.getName() != BodyName.Vehicle:
+            if not result.hasHit() or result.node.getName() != MetaDriveType.VEHICLE:
                 new_bp = copy.deepcopy(bp).get_dict()
                 if randomize:
                     new_bp["config"] = self._randomize_position_in_slot(new_bp["config"])

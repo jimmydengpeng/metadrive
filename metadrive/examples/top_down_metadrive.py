@@ -66,7 +66,7 @@ if __name__ == "__main__":
             # manual_control=True,
             map="SSSS",
             traffic_density=0.1,
-            environment_num=100,
+            num_scenarios=100,
             start_seed=random.randint(0, 1000),
         )
     )
@@ -78,7 +78,7 @@ if __name__ == "__main__":
             if d:
                 env.reset()
             if i % 50 == 0:
-                draw_multi_channels_top_down_observation(o, show_time=4)  # show time 4s
+                draw_multi_channels_top_down_observation(o, show_time=5)  # show time 4s
                 # ret = input("Do you wish to quit? Type any ESC to quite, or press enter to continue")
                 # if len(ret) == 0:
                 #     continue

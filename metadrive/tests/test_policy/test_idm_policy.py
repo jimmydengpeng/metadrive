@@ -11,13 +11,13 @@ from metadrive.utils import Config
 
 def _create_vehicle():
     v_config = Config(BASE_DEFAULT_CONFIG["vehicle_config"]).update(METADRIVE_DEFAULT_CONFIG["vehicle_config"])
-    v_config.update({"use_render": False, "offscreen_render": False})
+    v_config.update({"use_render": False, "image_observation": False})
     config = Config(BASE_DEFAULT_CONFIG)
     config.update(
         {
             "use_render": False,
             "pstats": False,
-            "offscreen_render": False,
+            "image_observation": False,
             "debug": False,
             "vehicle_config": v_config
         }
@@ -64,7 +64,7 @@ def test_idm_policy_is_moving(render=False, in_test=True):
         for t in range(100):
             env.step(env.action_space.sample())
             vs = env.engine.traffic_manager.traffic_vehicles
-            # print("Position: ", {str(v)[:4]: v.position for v in vs})
+            # # print("Position: ", {str(v)[:4]: v.position for v in vs})
             new_pos = np.array([v.position for v in vs])
             if t > 50 and last_pos is not None and in_test:
                 assert np.any(new_pos != last_pos)

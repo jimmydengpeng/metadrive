@@ -98,7 +98,8 @@ Action Config
     - :code:`manual_control` (bool = False): whether to control ego vehicle by user in the interface (require :code:`use_render = True`)
     - :code:`controller` (str = "keyboard"): select in ["keyboard", "joystick"], the controller for user to control the ego vehicle
     - :code:`discrete_action` (bool = False): whether to discretize the action space
-    - :code:`discrete_steering/throttle_dim` (int = 5, 5): how many dimensions used to discrtize the action space
+    - :code:`use_multi_discrete` (bool = False): whether to MultiDiscrete action space, if `discrete_action=True`
+    - :code:`discrete_steering/throttle_dim` (int = 5, 5): how many dimensions used to discrete the action space
     - :code:`decision_repeat` (int): how many times for the simulation engine to repeat the applied action to the vehicles. The minimal simulation interval :code:`physics_world_step_size` is 0.02 s. Therefore each RL step will last :code:`decision_repeat * 0.02 s` in the simulation world.
 
 
@@ -164,10 +165,8 @@ Other Observation Config
 
 The vehicle config decides many of the observational config.
 
-    - :code:`offscreen_render` (bool = False): If you want to use vision-based observation, please set this to True. See :ref:`use_native_rendering` for more information.
+    - :code:`image_observation` (bool = False): If you want to use vision-based observation, please set this to True. See :ref:`use_native_rendering` for more information.
     - :code:`rgb_clip` (bool = True): if True than squeeze the value between \[0, 255\] to \[0.0, 1.0\]
-    - :code:`headless_machine_render` (bool = False): Set this to True only when training on headless machine and using rgb image
-
 
 Traffic Config
 ##################################

@@ -1,7 +1,8 @@
+import copy
 import logging
+import math
 from typing import Dict
 
-import math
 import numpy as np
 import seaborn as sns
 from panda3d.bullet import BulletWorld, BulletBodyNode
@@ -11,12 +12,14 @@ from metadrive.base_class.base_runnable import BaseRunnable
 from metadrive.constants import ObjectState
 from metadrive.engine.asset_loader import AssetLoader
 from metadrive.engine.core.physics_world import PhysicsWorld
-from metadrive.engine.physics_node import BaseRigidBodyNode
+from metadrive.engine.physics_node import BaseRigidBodyNode, BaseGhostBodyNode
 from metadrive.utils import Vector
 from metadrive.utils import get_np_random
-from metadrive.utils.coordinates_shift import panda_position, metadrive_position, panda_heading, metadrive_heading
-from metadrive.utils.math_utils import clip
-from metadrive.utils.math_utils import norm
+from metadrive.utils import random_string
+from metadrive.utils.coordinates_shift import panda_vector, metadrive_vector, panda_heading
+from metadrive.utils.math import clip
+from metadrive.utils.math import norm
+from metadrive.utils.math import wrap_to_pi
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,12 @@ def clear_node_list(node_path_list):
             continue
 
         elif isinstance(node_path, BaseRigidBodyNode):
+            # PZH: Note that this line is extremely important!!!
+            # It breaks the cycle reference thus we can release nodes!!!
+            # It saves Waymo env!!!
+            node_path.destroy()
+
+        elif isinstance(node_path, BaseGhostBodyNode):
             # PZH: Note that this line is extremely important!!!
             # It breaks the cycle reference thus we can release nodes!!!
             # It saves Waymo env!!!
@@ -103,12 +112,14 @@ class BaseObject(BaseRunnable):
     calling __init__().
     """
     MASS = None  # if object has a body, the mass will be set automatically
+    COLLISION_MASK = None
 
     def __init__(self, name=None, random_seed=None, config=None, escape_random_seed_assertion=False):
         """
         Config is a static conception, which specified the parameters of one element.
         There parameters doesn't change, such as length of straight road, max speed of one vehicle, etc.
         """
+        config = copy.deepcopy(config)
         super(BaseObject, self).__init__(name, random_seed, config)
         if not escape_random_seed_assertion:
             assert random_seed is not None, "Please assign a random seed for {} class.".format(self.class_name)
@@ -141,7 +152,12 @@ class BaseObject(BaseRunnable):
         rand_c = color[idx]
         self._panda_color = rand_c
 
+        # store all NodePath reparented to this node
         self._node_path_list = []
+
+        # debug
+        self.coordinates_debug_np = None
+        self.need_show_coordinates = False
 
     def disable_gravity(self):
         self._body.setGravity(LVector3(0, 0, 0))
@@ -154,7 +170,7 @@ class BaseObject(BaseRunnable):
     def panda_color(self):
         return self._panda_color
 
-    def add_body(self, physics_body):
+    def add_body(self, physics_body, add_to_static_world=False):
         if self._body is None:
             # add it to physics world, in which this object will interact with other object (like collision)
             if not isinstance(physics_body, BulletBodyNode):
@@ -168,14 +184,23 @@ class BaseObject(BaseRunnable):
             # TODO(PZH): We don't call this sentence:. It might cause problem since we don't remove old origin?
             # self.origin.removeNode()
 
-            self._node_path_list.append(self.origin)
+            if self.COLLISION_MASK is not None:
+                self._body.setIntoCollideMask(self.COLLISION_MASK)
 
+            self._node_path_list.append(self.origin)
             self.origin = new_origin
-            self.dynamic_nodes.append(physics_body)
+            if add_to_static_world:
+                self.static_nodes.append(physics_body)
+            else:
+                self.dynamic_nodes.append(physics_body)
             if self.MASS is not None:
                 assert isinstance(self.MASS,
                                   int) or isinstance(self.MASS, float), "MASS should be a float or an integer"
                 self._body.setMass(self.MASS)
+
+            if self.engine is not None and self.engine.global_config["show_coordinates"]:
+                self.need_show_coordinates = True
+                self.show_coordinates()
         else:
             raise AttributeError("You can not set the object body for twice")
 
@@ -239,18 +264,25 @@ class BaseObject(BaseRunnable):
             self.static_nodes.clear()
             self._config.clear()
 
-    def set_position(self, position, height=0.543):
+    def set_position(self, position, height=None):
         """
         Set this object to a place, the default value is the regular height for red car
         :param position: 2d array or list
         """
-        self.origin.setPos(panda_position(position, height))
+        assert len(position) == 2 or len(position) == 3
+        if len(position) == 3:
+            height = position[-1]
+            position = position[:-1]
+        else:
+            if height is None:
+                height = self.origin.getPos()[-1]
+        self.origin.setPos(panda_vector(position, height))
 
     @property
     def position(self):
-        return metadrive_position(self.origin.getPos())
+        return metadrive_vector(self.origin.getPos())
 
-    def set_velocity(self, direction: list, value=None, in_local_frame=False):
+    def set_velocity(self, direction: np.array, value=None, in_local_frame=False):
         """
         Set velocity for object including the direction of velocity and the value (speed)
         The direction of velocity will be normalized automatically, value decided its scale
@@ -259,20 +291,24 @@ class BaseObject(BaseRunnable):
         :param in_local_frame: True, apply speed to local fram
         """
         if in_local_frame:
-            from metadrive.engine.engine_utils import get_engine
-            engine = get_engine()
-            direction = LVector3(*direction, 0.)
-            direction[1] *= -1
-            ret = engine.worldNP.getRelativeVector(self.origin, direction)
-            direction = [-ret[1], -ret[0]]
+            direction = self.convert_to_world_coordinates(direction, [0, 0])
+
         if value is not None:
             norm_ratio = value / (norm(direction[0], direction[1]) + 1e-6)
         else:
             norm_ratio = 1
         self._body.setLinearVelocity(
-            LVector3(direction[0] * norm_ratio, -direction[1] * norm_ratio,
+            LVector3(direction[0] * norm_ratio, direction[1] * norm_ratio,
                      self._body.getLinearVelocity()[-1])
         )
+
+    def set_velocity_km_h(self, direction: list, value=None, in_local_frame=False):
+        direction = np.array(direction)
+        if value is None:
+            direction /= 3.6
+        else:
+            value /= 3.6
+        return self.set_velocity(direction, value, in_local_frame)
 
     @property
     def velocity(self):
@@ -280,7 +316,14 @@ class BaseObject(BaseRunnable):
         Velocity, unit: m/s
         """
         velocity = self.body.get_linear_velocity()
-        return np.asarray([velocity[0], -velocity[1]])
+        return np.asarray([velocity[0], velocity[1]])
+
+    @property
+    def velocity_km_h(self):
+        """
+        Velocity, unit: m/s
+        """
+        return self.velocity * 3.6
 
     @property
     def speed(self):
@@ -291,14 +334,23 @@ class BaseObject(BaseRunnable):
         speed = norm(velocity[0], velocity[1])
         return clip(speed, 0.0, 100000.0)
 
-    def set_heading_theta(self, heading_theta, rad_to_degree=True) -> None:
+    @property
+    def speed_km_h(self):
+        """
+        km/h
+        """
+        velocity = self.body.get_linear_velocity()
+        speed = norm(velocity[0], velocity[1]) * 3.6
+        return clip(speed, 0.0, 100000.0)
+
+    def set_heading_theta(self, heading_theta, in_rad=True) -> None:
         """
         Set heading theta for this object
         :param heading_theta: float
-        :param in_rad: when set to True transfer to degree automatically
+        :param in_rad: when set to True, heading theta should be in rad, otherwise, in degree
         """
         h = panda_heading(heading_theta)
-        if rad_to_degree:
+        if in_rad:
             h = h * 180 / np.pi
         self.origin.setH(h)
 
@@ -308,7 +360,7 @@ class BaseObject(BaseRunnable):
         Get the heading theta of this object, unit [rad]
         :return:  heading in rad
         """
-        return metadrive_heading(self.origin.getH()) / 180 * math.pi
+        return wrap_to_pi(self.origin.getH() / 180 * math.pi)
 
     @property
     def heading(self):
@@ -323,48 +375,56 @@ class BaseObject(BaseRunnable):
     @property
     def roll(self):
         """
-        Return the roll of this object
+        Return the roll of this object. As it is facing to x, so roll is pitch
         """
-        return self.origin.getR()
+        return np.deg2rad(self.origin.getP())
 
     def set_roll(self, roll):
-        self.origin.setR(roll)
+        """
+        As it is facing to x, so roll is pitch
+        """
+        self.origin.setP(roll)
 
     @property
     def pitch(self):
         """
-        Return the pitch of this object
+        Return the pitch of this object, as it is facing to x, so pitch is roll
         """
-        return self.origin.getP()
+        return np.deg2rad(self.origin.getR())
 
     def set_pitch(self, pitch):
-        self.origin.setP(pitch)
+        """As it is facing to x, so pitch is roll"""
+        self.origin.setR(pitch)
 
     def set_static(self, flag):
         self.body.setStatic(flag)
 
     def get_panda_pos(self):
+        raise DeprecationWarning("It is not allowed to access Panda Pos!")
         return self.origin.getPos()
 
     def set_panda_pos(self, pos):
+        raise DeprecationWarning("It is not allowed to access Panda Pos!")
         self.origin.setPos(pos)
 
     def get_state(self) -> Dict:
+        pos = self.position
         state = {
-            ObjectState.POSITION: self.get_panda_pos(),
+            ObjectState.POSITION: [pos[0], pos[1], self.get_z()],
             ObjectState.HEADING_THETA: self.heading_theta,
             ObjectState.ROLL: self.roll,
             ObjectState.PITCH: self.pitch,
             ObjectState.VELOCITY: self.velocity,
+            ObjectState.TYPE: type(self)
         }
         return state
 
     def set_state(self, state: Dict):
-        self.set_panda_pos(state[ObjectState.POSITION])
+        self.set_position(state[ObjectState.POSITION])
         self.set_heading_theta(state[ObjectState.HEADING_THETA])
         self.set_pitch(state[ObjectState.PITCH])
         self.set_roll(state[ObjectState.ROLL])
-        self.set_velocity(state[ObjectState.VELOCITY] / 3.6)
+        self.set_velocity(state[ObjectState.VELOCITY])
 
     @property
     def top_down_color(self):
@@ -382,3 +442,78 @@ class BaseObject(BaseRunnable):
         raise NotImplementedError(
             "Implement this func for rendering class {} in top down renderer".format(self.class_name)
         )
+
+    def show_coordinates(self):
+        pass
+
+    def get_z(self):
+        return self.origin.getZ()
+
+    def set_angular_velocity(self, angular_velocity, in_rad=True):
+        if not in_rad:
+            angular_velocity = angular_velocity / 180 * np.pi
+        self._body.setAngularVelocity(LVector3(0, 0, angular_velocity))
+
+    def rename(self, new_name):
+        super(BaseObject, self).rename(new_name)
+        physics_node = self._body.getPythonTag(self._body.getName())
+        if isinstance(physics_node, BaseGhostBodyNode) or isinstance(physics_node, BaseRigidBodyNode):
+            physics_node.rename(new_name)
+
+    def random_rename(self):
+        self.rename(random_string())
+
+    def convert_to_local_coordinates(self, vector, origin):
+        """
+        Give vector in world coordinates, and convert it to object coordinates. For example, vector can be other vehicle
+        position, origin could be this vehicles position. In this case, vector-origin will be transformed to ego car
+        coordinates. If origin is set to 0, then no offset is applied and this API only calculates relative direction.
+
+        In a word, for calculating **points transformation** in different coordinates, origin is required. This is
+        because vectors have no origin but origin is required to define a point.
+        """
+        vector = np.asarray(vector) - np.asarray(origin)
+        vector = LVector3(*vector, 0.)
+        vector = self.origin.getRelativeVector(self.engine.origin, vector)
+        project_on_x = vector[0]
+        project_on_y = vector[1]
+        return np.array([project_on_x, project_on_y])
+
+    def convert_to_world_coordinates(self, vector, origin):
+        """
+        Give a vector in local coordinates, and convert it to world coordinates. The origin should be added as offset.
+        For example, vector could be a relative position in local coordinates and origin could be ego car's position.
+        If origin is set to 0, then no offset is applied and this API only calculates relative direction.
+
+        In a word, for calculating **points transformation** in different coordinates, origin is required. This is
+        because vectors have no origin but origin is required to define a point.
+        """
+        vector = LVector3(*vector, 0.)
+        vector = self.engine.origin.getRelativeVector(self.origin, vector)
+        project_on_x = vector[0]
+        project_on_y = vector[1]
+        return np.array([project_on_x, project_on_y]) + np.asarray(origin)
+
+    @property
+    def WIDTH(self):
+        raise NotImplementedError()
+
+    @property
+    def LENGTH(self):
+        raise NotImplementedError()
+
+    @property
+    def bounding_box(self):
+        """
+        This function will return the 2D bounding box of vehicle. Points are in clockwise sequence, first point is the
+        top-left point.
+        """
+        p1 = self.convert_to_world_coordinates([self.LENGTH / 2, self.WIDTH / 2], self.position)
+        p2 = self.convert_to_world_coordinates([self.LENGTH / 2, -self.WIDTH / 2], self.position)
+        p3 = self.convert_to_world_coordinates([-self.LENGTH / 2, -self.WIDTH / 2], self.position)
+        p4 = self.convert_to_world_coordinates([-self.LENGTH / 2, self.WIDTH / 2], self.position)
+        return [p1, p2, p3, p4]
+
+    @property
+    def use_render_pipeline(self):
+        return self.engine is not None and self.engine.use_render_pipeline

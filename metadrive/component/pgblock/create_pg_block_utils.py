@@ -9,9 +9,9 @@ from metadrive.component.lane.circular_lane import CircularLane
 from metadrive.component.lane.straight_lane import StraightLane
 from metadrive.component.road_network import Road
 from metadrive.component.road_network.node_road_network import NodeRoadNetwork
-from metadrive.constants import LineType, LineColor, DrivableAreaProperty
-from metadrive.utils.math_utils import get_vertical_vector
-from metadrive.utils.scene_utils import check_lane_on_road
+from metadrive.constants import PGLineType, PGLineColor, DrivableAreaProperty
+from metadrive.utils.math import get_vertical_vector
+from metadrive.utils.pg.utils import check_lane_on_road
 
 
 def create_bend_straight(
@@ -21,7 +21,7 @@ def create_bend_straight(
     angle: float,
     clockwise: bool = True,
     width: float = AbstractLane.DEFAULT_WIDTH,
-    line_types: Tuple[LineType, LineType] = None,
+    line_types: Tuple[PGLineType, PGLineType] = None,
     forbidden: bool = False,
     speed_limit: float = 20,
     priority: int = 0
@@ -30,29 +30,14 @@ def create_bend_straight(
     center = previous_lane.position(previous_lane.length, bend_direction * radius)
     p_lateral = previous_lane.direction_lateral
     x, y = p_lateral
-    start_phase = 0
-    if y == 0:
-        start_phase = 0 if x < 0 else -np.pi
-    elif x == 0:
-        start_phase = np.pi / 2 if y < 0 else -np.pi / 2
-    else:
-        base_angel = np.arctan(y / x)
-        if x < 0:
-            start_phase = base_angel
-        elif y < 0:
-            start_phase = np.pi + base_angel
-        elif y > 0:
-            start_phase = -np.pi + base_angel
-    end_phase = start_phase + angle
-    if not clockwise:
-        start_phase = start_phase - np.pi
-        end_phase = start_phase - angle
+    start_phase = np.arctan2(y, x) + (np.pi if clockwise else 0)
     bend = CircularLane(
-        center, radius, start_phase, end_phase, clockwise, width, line_types, forbidden, speed_limit, priority
+        center, radius, start_phase, angle, clockwise, width, line_types, forbidden, speed_limit, priority
     )
     length = 2 * radius * angle / 2
     bend_end = bend.position(length, 0)
     next_lane_heading = get_vertical_vector(bend_end - center)
+    # nxt_dir = next_lane_heading[0] if not clockwise else next_lane_heading[1]
     nxt_dir = next_lane_heading[0] if not clockwise else next_lane_heading[1]
     nxt_dir = np.asarray(nxt_dir)
     following_lane_end = nxt_dir * following_lane_length + bend_end
@@ -69,11 +54,11 @@ def CreateRoadFrom(
     toward_smaller_lane_index: bool = True,
     ignore_start: str = None,
     ignore_end: str = None,
-    center_line_type=LineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
+    center_line_type=PGLineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
     detect_one_side=True,
-    side_lane_line_type=LineType.SIDE,
-    inner_lane_line_type=LineType.BROKEN,
-    center_line_color=LineColor.YELLOW,
+    side_lane_line_type=PGLineType.SIDE,
+    inner_lane_line_type=PGLineType.BROKEN,
+    center_line_color=PGLineColor.YELLOW,
     ignore_intersection_checking=None
 ) -> bool:
     """
@@ -90,7 +75,7 @@ def CreateRoadFrom(
     lanes = []
     lane_width = lane.width_at(0)
     for i in range(lane_num, 0, -1):
-        side_lane = copy.deepcopy(lane)
+        side_lane = copy.copy(lane)
         if isinstance(lane, StraightLane):
             width = -lane_width if toward_smaller_lane_index else lane_width
             start = side_lane.position(0, width)
@@ -98,12 +83,12 @@ def CreateRoadFrom(
             side_lane.start = start
             side_lane.end = end
         elif isinstance(lane, CircularLane):
-            clockwise = True if lane.direction == 1 else False
+            new_lane_clockwise = True if lane.is_clockwise() else False
             radius1 = lane.radius
             if not toward_smaller_lane_index:
-                radius2 = radius1 - lane_width if clockwise else radius1 + lane_width
+                radius2 = radius1 - lane_width if new_lane_clockwise else radius1 + lane_width
             else:
-                radius2 = radius1 + lane_width if clockwise else radius1 - lane_width
+                radius2 = radius1 + lane_width if new_lane_clockwise else radius1 - lane_width
             side_lane.radius = radius2
             side_lane.update_properties()
         if i == 1:
@@ -156,12 +141,15 @@ def CreateRoadFrom(
         roadnet_to_add_lanes.add_lane(road.start_node, road.end_node, l)
     if lane_num == 0:
         lanes[-1].line_types = [center_line_type, side_lane_line_type]
-    lanes[0].line_colors = [center_line_color, LineColor.GREY]
+    lanes[0].line_colors = [center_line_color, PGLineColor.GREY]
     return no_cross
 
 
-def ExtendStraightLane(lane: "StraightLane", extend_length: float, line_types: (LineType, LineType)) -> "StraightLane":
-    new_lane = copy.deepcopy(lane)
+def ExtendStraightLane(
+    lane: "StraightLane", extend_length: float, line_types: (PGLineType, PGLineType)
+) -> "StraightLane":
+    assert isinstance(lane, StraightLane)
+    new_lane = copy.copy(lane)
     start_point = lane.end
     end_point = lane.position(lane.length + extend_length, 0)
     new_lane.start = start_point
@@ -181,10 +169,10 @@ def CreateAdverseRoad(
     roadnet_to_check_cross: "NodeRoadNetwork",  # mostly, previous global network
     ignore_start: str = None,
     ignore_end: str = None,
-    center_line_type=LineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
-    side_lane_line_type=LineType.SIDE,
-    inner_lane_line_type=LineType.BROKEN,
-    center_line_color=LineColor.YELLOW,
+    center_line_type=PGLineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
+    side_lane_line_type=PGLineType.SIDE,
+    inner_lane_line_type=PGLineType.BROKEN,
+    center_line_color=PGLineColor.YELLOW,
     ignore_intersection_checking=None
 ) -> bool:
     adverse_road = -positive_road
@@ -201,14 +189,14 @@ def CreateAdverseRoad(
         )
     elif isinstance(reference_lane, CircularLane):
         start_phase = reference_lane.end_phase
-        end_phase = reference_lane.start_phase
-        clockwise = False if reference_lane.direction == 1 else True
-        if not clockwise:
+        angle = reference_lane.angle
+        new_lane_clockwise = False if reference_lane.is_clockwise() else True
+        if not new_lane_clockwise:
             radius = reference_lane.radius + (num - 1) * width
         else:
             radius = reference_lane.radius - (num - 1) * width
         symmetric_lane = CircularLane(
-            reference_lane.center, radius, start_phase, end_phase, clockwise, width, reference_lane.line_types,
+            reference_lane.center, radius, start_phase, angle, new_lane_clockwise, width, reference_lane.line_types,
             reference_lane.forbidden, reference_lane.speed_limit, reference_lane.priority
         )
     else:
@@ -227,7 +215,7 @@ def CreateAdverseRoad(
         center_line_color=center_line_color,
         ignore_intersection_checking=ignore_intersection_checking
     )
-    positive_road.get_lanes(roadnet_to_get_road)[0].line_colors = [center_line_color, LineColor.GREY]
+    positive_road.get_lanes(roadnet_to_get_road)[0].line_colors = [center_line_color, PGLineColor.GREY]
     return success
 
 
@@ -238,9 +226,9 @@ def CreateTwoWayRoad(
     new_road_name: Road = None,
     ignore_start: str = None,
     ignore_end: str = None,
-    center_line_type=LineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
-    side_lane_line_type=LineType.SIDE,
-    inner_lane_line_type=LineType.BROKEN,
+    center_line_type=PGLineType.CONTINUOUS,  # Identical to Block.CENTER_LINE_TYPE
+    side_lane_line_type=PGLineType.SIDE,
+    inner_lane_line_type=PGLineType.BROKEN,
     ignore_intersection_checking=None
 ) -> bool:
     """
@@ -268,14 +256,14 @@ def CreateTwoWayRoad(
         )
     elif isinstance(reference_lane, CircularLane):
         start_phase = reference_lane.end_phase
-        end_phase = reference_lane.start_phase
-        clockwise = False if reference_lane.direction == 1 else True
-        if not clockwise:
+        angle = reference_lane.angle
+        new_lane_clockwise = False if reference_lane.is_clockwise() else True
+        if not new_lane_clockwise:
             radius = reference_lane.radius + (num - 1) * width
         else:
             radius = reference_lane.radius - (num - 1) * width
         symmetric_lane = CircularLane(
-            reference_lane.center, radius, start_phase, end_phase, clockwise, width, reference_lane.line_types,
+            reference_lane.center, radius, start_phase, angle, new_lane_clockwise, width, reference_lane.line_types,
             reference_lane.forbidden, reference_lane.speed_limit, reference_lane.priority
         )
     else:
@@ -320,11 +308,11 @@ def create_wave_lanes(
     angle = np.pi - 2 * np.arctan(wave_length / (2 * lateral_dist))
     radius = wave_length / (2 * math.sin(angle))
     circular_lane_1, pre_lane = create_bend_straight(
-        pre_lane, 10, radius, angle, False if toward_left else True, lane_width, [LineType.NONE, LineType.NONE]
+        pre_lane, 10, radius, angle, False if toward_left else True, lane_width, [PGLineType.NONE, PGLineType.NONE]
     )
     pre_lane.reset_start_end(pre_lane.position(-10, 0), pre_lane.position(pre_lane.length - 10, 0))
     circular_lane_2, straight_lane = create_bend_straight(
         pre_lane, last_straight_length, radius, angle, True if toward_left else False, lane_width,
-        [LineType.NONE, LineType.NONE]
+        [PGLineType.NONE, PGLineType.NONE]
     )
     return circular_lane_1, circular_lane_2, straight_lane

@@ -1,11 +1,9 @@
 # Please don't change the order of following packages!
+import os
 import sys
 from os import path
-import os
-import shutil
-from setuptools import setup, find_namespace_packages  # This should be place at top!
 
-from os.path import join as pjoin
+from setuptools import setup, find_namespace_packages  # This should be place at top!
 
 ROOT_DIR = os.path.dirname(__file__)
 
@@ -18,8 +16,8 @@ def is_win():
     return sys.platform == "win32"
 
 
-assert sys.version_info.major == 3 and sys.version_info.minor >= 6 and sys.version_info.minor <= 9, \
-    "python version >= 3.6, <=3.9 is required"
+assert sys.version_info.major == 3 and sys.version_info.minor >= 6 and sys.version_info.minor < 12, \
+    "python version >= 3.6, <3.12 is required"
 
 this_directory = path.abspath(path.dirname(__file__))
 with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
@@ -29,59 +27,11 @@ packages = find_namespace_packages(
 print("We will install the following packages: ", packages)
 
 """ ===== Remember to modify the PG_EDITION at first ====="""
-version = "0.2.6.0"
-
-# Can install specific branch via:
-# pip install git+https://github.com/metadriverse/metadrive.git@fix-asset-copy
-
-# Our target destniation is:
-# /Users/pengzhenghao/opt/anaconda3/envs/cs260/lib/python3.8/site-packages
-
-# PZH: We need to copy assets to destination
-# Code from: https://github.com/apache/arrow/blob/master/python/setup.py
-# scm_version_write_to_prefix = os.environ.get(
-#     'SETUPTOOLS_SCM_VERSION_WRITE_TO_PREFIX', ROOT_DIR)
-# print("Write to: ", scm_version_write_to_prefix)
-# def copy_assets(dir):
-#     working_dir = pjoin(os.getcwd())
-#
-#     print("Root directory: ", ROOT_DIR)
-#
-#     print("Working directory: ", working_dir)
-#     for path in os.listdir(pjoin(working_dir, "metadrive", "assets")):
-#         print("The files in the assets folders: ", path)
-#
-#     # The files you already download:
-#
-#
-#     for path in os.listdir(pjoin(working_dir, dir)):
-#
-#         print("Path: ", path)
-#
-#         if "python" in path:
-#             metadrive_path = pjoin(working_dir, "metadrive", path)
-#
-#             print("MetaDrive path: ", metadrive_path)
-#
-#             if os.path.exists(metadrive_path):
-#                 os.remove(metadrive_path)
-#             metadrive_asset_path = pjoin(working_dir, dir, path)
-#             print(f"Copying {metadrive_asset_path} to {metadrive_path}")
-#             shutil.copy(metadrive_asset_path, metadrive_path)
-#
-#
-# # Move libraries to python/pyarrow
-# # For windows builds, move DLL from bin/
-# try:
-#     copy_assets("bin")
-# except OSError:
-#     pass
-# copy_assets("lib")
-
+version = "0.3.0.1"
 
 install_requires = [
-    "gym==0.19.0",
-    "numpy",
+    "gym>=0.20.0, <0.26.0, !=0.23.*, !=0.24.*",
+    "numpy>=1.21.6, <=1.24.2",
     "matplotlib",
     "pandas",
     "pygame",
@@ -89,24 +39,50 @@ install_requires = [
     "yapf",
     "seaborn",
     "tqdm",
-    "panda3d==1.10.8",
-    "panda3d-gltf",
+    # "panda3d==1.10.8",
+    "panda3d==1.10.13",
+    "panda3d-gltf==0.13",  # 0.14 will bring some problems
     "panda3d-simplepbr",
     "pillow",
-    "protobuf==3.20.1",
+    "protobuf==3.20.3",
     "pytest",
     "opencv-python",
     "lxml",
     "scipy",
-    "psutil"
+    "psutil",
+    "geopandas",
+    "shapely"
 ]
 
-# if (not is_mac()) and (not is_win()):
-#     install_requires.append("evdev")
+nuplan_requirement = [
+    "bokeh==2.4",
+    "hydra-core",
+    "chardet",
+    "pyarrow",
+    "aiofiles",
+    "retry",
+    "boto3",
+    "aioboto3"
+]
+
+
+# Or try:
+#   pip install git+https://github.com/waymo-research/waymo-open-dataset.git
+waymo_requirement = [
+    "waymo-open-dataset-tf-2.11.0==1.5.0"
+]
+
+cuda_requirement = [
+    "cuda-python==12.0.0",
+    "PyOpenGL==3.1.6",
+    "PyOpenGL-accelerate==3.1.6",
+    "pyrr==0.10.3",
+    "glfw",
+]
 
 setup(
     name="metadrive-simulator",
-    python_requires='>=3.7, <=3.9',
+    python_requires='>=3.6, <3.12',  # do version check with assert
     version=version,
     description="An open-ended driving simulator with infinite scenes",
     url="https://github.com/metadriverse/metadrive",
@@ -114,6 +90,12 @@ setup(
     author_email="quanyili0057@gmail.com, pzh@cs.ucla.edu",
     packages=packages,
     install_requires=install_requires,
+    extras_require={
+        "cuda": cuda_requirement,
+        "nuplan": nuplan_requirement,
+        "waymo": waymo_requirement,
+        "all": nuplan_requirement + cuda_requirement
+    },
     include_package_data=True,
     license="Apache 2.0",
     long_description=long_description,
@@ -122,6 +104,8 @@ setup(
 
 """
 How to publish to pypi?  Noted by Zhenghao in Dec 27, 2020.
+
+0. Rename version in metadrive/constants.py and setup.py
 
 1. Remove old files and ext_modules from setup() to get a clean wheel for all platforms in py3-none-any.wheel
     rm -rf dist/ build/ documentation/build/ metadrive_simulator.egg-info/ docs/build/

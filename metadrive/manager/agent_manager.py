@@ -1,14 +1,15 @@
 import copy
+from metadrive.policy.idm_policy import TrajectoryIDMPOlicy
 from typing import Dict
 
-from gym.spaces import Box, Dict, MultiDiscrete
+from gym.spaces import Box, Dict, MultiDiscrete, Discrete
 
 from metadrive.constants import DEFAULT_AGENT
 from metadrive.manager.base_manager import BaseManager
 from metadrive.policy.AI_protect_policy import AIProtectPolicy
-from metadrive.policy.env_input_policy import EnvInputPolicy
 from metadrive.policy.manual_control_policy import ManualControlPolicy
 from metadrive.policy.openpilot_control_policy import OpenpilotControlPolicy
+from metadrive.policy.replay_policy import ReplayTrafficParticipantPolicy
 
 
 class AgentManager(BaseManager):
@@ -66,16 +67,21 @@ class AgentManager(BaseManager):
         for agent_id, v_config in config_dict.items():
             v_type = random_vehicle_type(self.np_random) if self.engine.global_config["random_agent_model"] else \
                 vehicle_type[v_config["vehicle_model"] if v_config.get("vehicle_model", False) else "default"]
-            obj = self.spawn_object(v_type, vehicle_config=v_config)
+
+            obj_name = agent_id if self.engine.global_config["force_reuse_object_name"] else None
+            obj = self.spawn_object(v_type, vehicle_config=v_config, name=obj_name)
             ret[agent_id] = obj
-            policy_cls = self.get_policy()
-            self.add_policy(obj.id, policy_cls, obj, self.generate_seed())
+            policy_cls = self.agent_policy
+            args = [obj, self.generate_seed()]
+            if policy_cls == TrajectoryIDMPOlicy or issubclass(policy_cls, TrajectoryIDMPOlicy):
+                args.append(self.engine.map_manager.current_sdc_route)
+            self.add_policy(obj.id, policy_cls, *args)
         return ret
 
-    def get_policy(self):
+    @property
+    def agent_policy(self):
         # note: agent.id = object id
-        if self.engine.global_config["agent_policy"] is not None:
-            return self.engine.global_config["agent_policy"]
+
         if self.engine.global_config["manual_control"]:
             if self.engine.global_config.get("use_AI_protector", False):
                 policy = AIProtectPolicy
@@ -84,7 +90,7 @@ class AgentManager(BaseManager):
             else:
                 policy = ManualControlPolicy
         else:
-            policy = EnvInputPolicy
+            policy = self.engine.global_config["agent_policy"]
         return policy
 
     def before_reset(self):
@@ -141,13 +147,14 @@ class AgentManager(BaseManager):
             self.observations[vehicle.name] = self._init_observations[agent_id]
             obs_space = self._init_observation_spaces[agent_id]
             self.observation_spaces[vehicle.name] = obs_space
-            if not self.engine.global_config["offscreen_render"]:
+            if not self.engine.global_config["image_observation"]:
                 assert isinstance(obs_space, Box)
             else:
                 assert isinstance(obs_space, Dict), "Multi-agent observation should be gym.Dict"
             action_space = self._init_action_spaces[agent_id]
             self.action_spaces[vehicle.name] = action_space
-            assert isinstance(action_space, Box) or isinstance(action_space, MultiDiscrete)
+            assert isinstance(action_space, Box) or isinstance(action_space,
+                                                               MultiDiscrete) or isinstance(action_space, Discrete)
         self.next_agent_count = len(init_vehicles)
 
     def set_state(self, state: dict, old_name_to_current=None):
@@ -222,16 +229,28 @@ class AgentManager(BaseManager):
     def set_allow_respawn(self, flag: bool):
         self._allow_respawn = flag
 
+    def try_actuate_agent(self, step_infos, stage="before_step"):
+        """
+        Some policies should make decision before physics world actuation, in particular, those need decision-making
+        But other policies like ReplayPolicy should be called in after_step, as they already know the final state and
+        exempt the requirement for rolling out the dynamic system to get it.
+        """
+        assert stage == "before_step" or stage == "after_step"
+        for agent_id in self.active_agents.keys():
+            policy = self.get_policy(self._agent_to_object[agent_id])
+            cond_1 = stage == "before_step" and not isinstance(policy, ReplayTrafficParticipantPolicy)
+            cond_2 = stage == "after_step" and isinstance(policy, ReplayTrafficParticipantPolicy)
+            if cond_2 or cond_1:
+                assert policy is not None, "No policy is set for agent {}".format(agent_id)
+                action = policy.act(agent_id)
+                step_infos[agent_id] = policy.get_action_info()
+                step_infos[agent_id].update(self.get_agent(agent_id).before_step(action))
+        return step_infos
+
     def before_step(self):
         # not in replay mode
         self._agents_finished_this_frame = dict()
-        step_infos = {}
-        for agent_id in self.active_agents.keys():
-            policy = self.engine.get_policy(self._agent_to_object[agent_id])
-            assert policy is not None, "No policy is set for agent {}".format(agent_id)
-            action = policy.act(agent_id)
-            step_infos[agent_id] = policy.get_action_info()
-            step_infos[agent_id].update(self.get_agent(agent_id).before_step(action))
+        step_infos = self.try_actuate_agent(dict(), stage="before_step")
 
         finished = set()
         for v_name in self._dying_objects.keys():
@@ -246,6 +265,7 @@ class AgentManager(BaseManager):
 
     def after_step(self, *args, **kwargs):
         step_infos = self.for_each_active_agents(lambda v: v.after_step())
+        step_infos = self.try_actuate_agent(step_infos, stage="after_step")
         return step_infos
 
     def _translate(self, d):

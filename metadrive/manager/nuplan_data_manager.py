@@ -1,17 +1,46 @@
 import logging
 import os
 import tempfile
-
+from os.path import join
 import hydra
 import nuplan.planning.script.builders.worker_pool_builder
 from nuplan.planning.script.builders.scenario_building_builder import build_scenario_builder
 from nuplan.planning.script.builders.scenario_filter_builder import build_scenario_filter
 from nuplan.planning.script.utils import set_up_common_builder
-
+from dataclasses import dataclass
 from metadrive.manager.base_manager import BaseManager
+from metadrive.utils.utils import is_win
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+ROOT = os.path.dirname(__file__)
+
+
+# Copied from nuplan-devkit tutorial_utils.py
+@dataclass
+class HydraConfigPaths:
+    """
+    Stores relative hydra paths to declutter tutorial.
+    """
+
+    common_dir: str
+    config_name: str
+    config_path: str
+    experiment_dir: str
+
+
+def construct_simulation_hydra_paths(base_config_path: str):
+    """
+    Specifies relative paths to simulation configs to pass to hydra to declutter tutorial.
+    :param base_config_path: Base config path.
+    :return: Hydra config path.
+    """
+    common_dir = "file://" + join(base_config_path, 'config', 'common')
+    config_name = 'default_simulation'
+    config_path = join(base_config_path, 'config', 'simulation')
+    experiment_dir = "file://" + join(base_config_path, 'experiments')
+    return HydraConfigPaths(common_dir, config_name, config_path, experiment_dir)
 
 
 class NuPlanDataManager(BaseManager):
@@ -37,13 +66,16 @@ class NuPlanDataManager(BaseManager):
         # get scenarios from database
         self._nuplan_scenarios = scenario_builder.get_scenarios(scenario_filter, common_builder.worker)
 
-        # filter case according to config
-        self.start_case_index = self.engine.global_config["start_case_index"]
-        self.case_num = self.engine.global_config["case_num"]
-        assert len(self._nuplan_scenarios) > self.start_case_index + self.case_num, "Number of scenes are not enough"
+        # filter scenario according to config
+        self.start_scenario_index = self.engine.global_config["start_scenario_index"]
+        self._num_scenarios = self.engine.global_config["num_scenarios"]
+        assert len(self._nuplan_scenarios) >= self.start_scenario_index + self.num_scenarios, \
+            "Number of scenes are not enough, " \
+            "\n num nuplan scenarios: {}" \
+            "\n start_scenario_index: {}" \
+            "\n scenario num: {}".format(len(self._nuplan_scenarios), self.start_scenario_index, self.num_scenarios)
         logger.info("\n \n ############### Finish Loading NuPlan Data ############### \n")
 
-        self._scenario_num = self.case_num
         self._current_scenario_index = None
 
     @property
@@ -51,8 +83,8 @@ class NuPlanDataManager(BaseManager):
         return self.current_scenario.database_interval
 
     @property
-    def scenario_num(self):
-        return self._scenario_num
+    def num_scenarios(self):
+        return self._num_scenarios
 
     @property
     def current_scenario_index(self):
@@ -63,16 +95,12 @@ class NuPlanDataManager(BaseManager):
         return self._nuplan_scenarios[self._current_scenario_index]
 
     def _get_nuplan_cfg(self):
-        from tutorials.utils.tutorial_utils import construct_simulation_hydra_paths
-
-        BASE_CONFIG_PATH = os.path.relpath(
-            os.path.join(self.NUPLAN_PACKAGE_PATH, "planning", "script"), start=os.path.dirname(__file__)
-        )
+        BASE_CONFIG_PATH = os.path.join(self.NUPLAN_PACKAGE_PATH, "planning", "script")
         simulation_hydra_paths = construct_simulation_hydra_paths(BASE_CONFIG_PATH)
 
         # Initialize configuration management system
         hydra.core.global_hydra.GlobalHydra.instance().clear()  # reinitialize hydra if already initialized
-        hydra.initialize(config_path=simulation_hydra_paths.config_path)
+        hydra.initialize_config_dir(config_dir=simulation_hydra_paths.config_path)
 
         SAVE_DIR = tempfile.mkdtemp()
         EGO_CONTROLLER = 'perfect_tracking_controller'  # [log_play_back_controller, perfect_tracking_controller]
@@ -81,34 +109,46 @@ class NuPlanDataManager(BaseManager):
         DATASET_PARAMS = self.engine.global_config["DATASET_PARAMS"]
 
         # Compose the configuration
-        cfg = hydra.compose(
-            config_name=simulation_hydra_paths.config_name,
-            overrides=[
-                f'group={SAVE_DIR}',
-                f'experiment_name=planner_tutorial',
-                'worker=sequential',
-                f'ego_controller={EGO_CONTROLLER}',
-                f'observation={OBSERVATION}',
-                f'hydra.searchpath=[{simulation_hydra_paths.common_dir}, {simulation_hydra_paths.experiment_dir}]',
-                'output_dir=${group}/${experiment}',
-                *DATASET_PARAMS,
-            ]
-        )
+        overrides = [
+            f'group={SAVE_DIR}',
+            'worker=sequential',
+            f'ego_controller={EGO_CONTROLLER}',
+            f'observation={OBSERVATION}',
+            f'hydra.searchpath=[{simulation_hydra_paths.common_dir}, {simulation_hydra_paths.experiment_dir}]',
+            'output_dir=${group}/${experiment}',
+            *DATASET_PARAMS,
+        ]
+        if is_win():
+            overrides.extend(
+                [
+                    f'job_name=planner_tutorial',
+                    'experiment=${experiment_name}/${job_name}/${experiment_time}',
+                ]
+            )
+        else:
+            overrides.append(f'experiment_name=planner_tutorial')
+        cfg = hydra.compose(config_name=simulation_hydra_paths.config_name, overrides=overrides)
         return cfg
 
-    def get_case(self, index, force_get_current_case=True):
-        assert self.start_case_index <= index < self.start_case_index + self.case_num
-        if force_get_current_case:
+    def get_scenario(self, index, force_get_current_scenario=True):
+        assert self.start_scenario_index <= index < self.start_scenario_index + self.num_scenarios
+        if force_get_current_scenario:
             assert index == self.random_seed
             return self.current_scenario
         else:
             return self._nuplan_scenarios[index]
 
     def seed(self, random_seed):
-        assert self.start_case_index <= random_seed < self.start_case_index + self.case_num
+        assert self.start_scenario_index <= random_seed < self.start_scenario_index + self.num_scenarios
         super(NuPlanDataManager, self).seed(random_seed)
         self._current_scenario_index = random_seed
 
     @property
     def current_scenario_length(self):
         return self.current_scenario.get_number_of_iterations()
+
+    def get_metadata(self):
+        state = super(NuPlanDataManager, self).get_metadata()
+        raw_data = self.current_scenario
+        state["raw_data"] = raw_data
+        return state

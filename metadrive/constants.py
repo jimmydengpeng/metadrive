@@ -1,11 +1,14 @@
+import math
 from typing import List, Tuple
 
-import math
 from panda3d.bullet import BulletWorld
 from panda3d.core import Vec3
 from panda3d.core import Vec4, BitMask32
 
-EDITION = "MetaDrive v0.2.6.0"
+from metadrive.type import MetaDriveType
+
+EDITION = "MetaDrive v0.3.0.1"
+DATA_VERSION = EDITION  # Use MetaDrive version to mark the data version
 DEFAULT_AGENT = "default_agent"
 RENDER_MODE_NONE = "none"  # Do not render
 RENDER_MODE_ONSCREEN = "onscreen"  # Pop up a window and draw image in it
@@ -55,29 +58,25 @@ COLLISION_INFO_COLOR = dict(
     green=(3, Vec4(65 / 255, 163 / 255, 0, 1))
 )
 
-
-class BodyName:
-    White_continuous_line = "White Continuous Line"
-    Yellow_continuous_line = "Yellow Continuous Line"
-    Broken_line = "Broken Line"
-    Sidewalk = "Sidewalk"
-    Ground = "Ground"
-    InvisibleWall = "InvisibleWall"
-    Vehicle = "Vehicle"
-    Lane = "Lane"
-    Traffic_object = "Traffic Object"
-    TollGate = "Toll Gate"
-
-
+# Used for rendering the banner in Interface.
 COLOR = {
-    BodyName.Sidewalk: "red",
-    BodyName.White_continuous_line: "orange",
-    BodyName.Yellow_continuous_line: "red",
-    BodyName.Broken_line: "yellow",
-    BodyName.Vehicle: "red",
-    BodyName.Traffic_object: "orange",
-    BodyName.InvisibleWall: "red",
-    BodyName.TollGate: "red",
+    MetaDriveType.BOUNDARY_LINE: "red",
+    MetaDriveType.LINE_SOLID_SINGLE_WHITE: "orange",
+    MetaDriveType.LINE_SOLID_SINGLE_YELLOW: "orange",
+    MetaDriveType.LINE_BROKEN_SINGLE_YELLOW: "yellow",
+    MetaDriveType.LINE_BROKEN_SINGLE_WHITE: "green",
+    MetaDriveType.VEHICLE: "red",
+    MetaDriveType.GROUND: "yellow",
+    MetaDriveType.TRAFFIC_OBJECT: "yellow",
+    MetaDriveType.TRAFFIC_CONE: "yellow",
+    MetaDriveType.TRAFFIC_BARRIER: "yellow",
+    MetaDriveType.PEDESTRIAN: "red",
+    MetaDriveType.CYCLIST: "red",
+    MetaDriveType.INVISIBLE_WALL: "red",
+    MetaDriveType.BUILDING: "red",
+    MetaDriveType.LIGHT_RED: "red",
+    MetaDriveType.LIGHT_YELLOW: "orange",
+    MetaDriveType.LIGHT_GREEN: "green",
 }
 
 
@@ -126,9 +125,13 @@ class CollisionGroup(Mask):
     ContinuousLaneLine = BitMask32.bit(7)
     InvisibleWall = BitMask32.bit(8)
     LidarBroadDetector = BitMask32.bit(9)
+    TrafficParticipants = BitMask32.bit(10)
 
     @classmethod
     def collision_rules(cls):
+        """
+        This should be a diagonal matrix
+        """
         return [
             # terrain collision
             (cls.Terrain, cls.Terrain, False),
@@ -140,6 +143,7 @@ class CollisionGroup(Mask):
             (cls.Terrain, cls.Sidewalk, True),
             (cls.Terrain, cls.LidarBroadDetector, False),
             (cls.Terrain, cls.TrafficObject, True),
+            (cls.Terrain, cls.TrafficParticipants, True),
 
             # block collision
             (cls.BrokenLaneLine, cls.BrokenLaneLine, False),
@@ -151,6 +155,7 @@ class CollisionGroup(Mask):
             (cls.BrokenLaneLine, cls.Sidewalk, False),
             (cls.BrokenLaneLine, cls.LidarBroadDetector, False),
             (cls.BrokenLaneLine, cls.TrafficObject, True),
+            (cls.BrokenLaneLine, cls.TrafficParticipants, True),
 
             # ego vehicle collision
             (cls.Vehicle, cls.Vehicle, True),
@@ -160,6 +165,7 @@ class CollisionGroup(Mask):
             (cls.Vehicle, cls.Sidewalk, True),
             (cls.Vehicle, cls.LidarBroadDetector, True),
             (cls.Vehicle, cls.TrafficObject, True),
+            (cls.Vehicle, cls.TrafficParticipants, True),
 
             # lane surface
             (cls.LaneSurface, cls.LaneSurface, False),
@@ -168,6 +174,7 @@ class CollisionGroup(Mask):
             (cls.LaneSurface, cls.Sidewalk, False),
             (cls.LaneSurface, cls.LidarBroadDetector, False),
             (cls.LaneSurface, cls.TrafficObject, True),
+            (cls.LaneSurface, cls.TrafficParticipants, True),
 
             # continuous lane line
             (cls.ContinuousLaneLine, cls.ContinuousLaneLine, False),
@@ -175,21 +182,32 @@ class CollisionGroup(Mask):
             (cls.ContinuousLaneLine, cls.Sidewalk, False),
             (cls.ContinuousLaneLine, cls.LidarBroadDetector, False),
             (cls.ContinuousLaneLine, cls.TrafficObject, False),
+            (cls.ContinuousLaneLine, cls.TrafficParticipants, True),
 
             # invisible wall
             (cls.InvisibleWall, cls.InvisibleWall, False),
             (cls.InvisibleWall, cls.Sidewalk, False),
             (cls.InvisibleWall, cls.LidarBroadDetector, True),
             (cls.InvisibleWall, cls.TrafficObject, False),
+            (cls.InvisibleWall, cls.TrafficParticipants, True),
 
             # side walk
             (cls.Sidewalk, cls.Sidewalk, False),
             (cls.Sidewalk, cls.LidarBroadDetector, False),
             (cls.Sidewalk, cls.TrafficObject, True),
+            (cls.Sidewalk, cls.TrafficParticipants, False),  # don't allow sidewalk contact
 
-            #
+            # LidarBroadDetector
             (cls.LidarBroadDetector, cls.LidarBroadDetector, False),
             (cls.LidarBroadDetector, cls.TrafficObject, True),
+            (cls.LidarBroadDetector, cls.TrafficParticipants, True),
+
+            # TrafficObject
+            (cls.TrafficObject, cls.TrafficObject, True),
+            (cls.TrafficObject, cls.TrafficParticipants, True),
+
+            # TrafficParticipant
+            (cls.TrafficParticipants, cls.TrafficParticipants, True)
         ]
 
     @classmethod
@@ -199,6 +217,35 @@ class CollisionGroup(Mask):
             group_2 = int(math.log(rule[1].getWord(), 2))
             relation = rule[-1]
             world.setGroupCollisionFlag(group_1, group_2, relation)
+
+    @classmethod
+    def can_be_lidar_detected(cls):
+        return cls.Vehicle | cls.InvisibleWall | cls.TrafficObject | cls.TrafficParticipants
+
+    # def make_collision_from_model(input_model, world):
+    #     # tristrip generation from static models
+    #     # generic tri-strip collision generator begins
+    #     geom_nodes = input_model.findAllMatches('**/+GeomNode')
+    #     geom_nodes = geom_nodes.getPath(0).node()
+    #     # print(geom_nodes)
+    #     geom_target = geom_nodes.getGeom(0)
+    #     # print(geom_target)
+    #     output_bullet_mesh = BulletTriangleMesh()
+    #     output_bullet_mesh.addGeom(geom_target)
+    #     tri_shape = BulletTriangleMeshShape(output_bullet_mesh, dynamic=False)
+    #     print(output_bullet_mesh)
+    #
+    #     body = BulletRigidBodyNode('input_model_tri_mesh')
+    #     np = self.render.attachNewNode(body)
+    #     np.node().addShape(tri_shape)
+    #     np.node().setMass(0)
+    #     np.node().setFriction(0.5)
+    #     # np.setPos(0, 0, 0)
+    #     np.setScale(1)
+    #     np.setCollideMask(BitMask32.allOn())
+    #     world.attachRigidBody(np.node())
+    #
+    # make_collision_from_model(access_deck_1, world)  # world = BulletWorld()
 
 
 LaneIndex = Tuple[str, str, int]
@@ -210,7 +257,7 @@ AGENT_TO_OBJECT = "agent_to_object"
 BKG_COLOR = Vec3(1, 1, 1)
 
 
-class LineType:
+class PGLineType:
     """A lane side line type."""
 
     NONE = "none"
@@ -220,20 +267,18 @@ class LineType:
 
     @staticmethod
     def prohibit(line_type) -> bool:
-        if line_type in [LineType.CONTINUOUS, LineType.SIDE]:
+        if line_type in [PGLineType.CONTINUOUS, PGLineType.SIDE]:
             return True
         else:
             return False
 
 
-class LineColor:
+class PGLineColor:
     GREY = (1, 1, 1, 1)
-    YELLOW = (245 / 255, 192 / 255, 67 / 255, 1)
+    YELLOW = (255 / 255, 200 / 255, 0 / 255, 1)
 
 
 class DrivableAreaProperty:
-    CENTER_LINE_TYPE = LineType.CONTINUOUS
-
     # road network property
     ID = None  # each block must have a unique ID
     SOCKET_NUM = None
@@ -242,7 +287,7 @@ class DrivableAreaProperty:
     LANE_SEGMENT_LENGTH = 4
     STRIPE_LENGTH = 1.5
     LANE_LINE_WIDTH = 0.15
-    LANE_LINE_THICKNESS = 0.01
+    LANE_LINE_THICKNESS = 0.016
 
     SIDEWALK_THICKNESS = 0.4
     SIDEWALK_LENGTH = 3
@@ -280,6 +325,8 @@ class ObjectState:
     CLASS = "type"
     INIT_KWARGS = "config"
     NAME = "name"
+    SIZE = "size"
+    TYPE = "type"
 
 
 class PolicyState:
@@ -292,22 +339,44 @@ class PolicyState:
 REPLAY_DONE = "replay_done"
 
 
-class WaymoLaneProperty:
-    LANE_TYPE = "center_lane"
-    LANE_LINE_TYPE = "road_line"
-    LANE_EDGE_TYPE = "road_edge"
-    POLYLINE = "polyline"
-    LEFT_BOUNDARIES = "left_boundaries"
-    RIGHT_BOUNDARIES = "right_boundaries"
-    LEFT_NEIGHBORS = "left_neighbor"
-    RIGHT_NEIGHBORS = "right_neighbor"
-    ENTRY = "entry"
-    EXIT = "exit"
-
+class SemanticColor:
     @staticmethod
-    def get_line_type_and_line_color(waymo_type):
-        pass
+    def get_color(type):
+        raise NotImplementedError
 
 
-class NuPlanLaneProperty:
-    pass
+class MapSemanticColor(SemanticColor):
+    """I didn't use it at this time and keep it the same as MapTerrainAttribute"""
+    @staticmethod
+    def get_color(type):
+        if MetaDriveType.is_yellow_line(type):
+            # return (255, 0, 0, 0)
+            return (1, 0, 0, 0)
+        elif MetaDriveType.is_lane(type):
+            return (0, 1, 0, 0)
+        elif type == MetaDriveType.GROUND:
+            return (0, 0, 1, 0)
+        elif MetaDriveType.is_white_line(type) or MetaDriveType.is_road_edge(type):
+            return (0, 0, 0, 1)
+        else:
+            raise ValueError("Unsupported type: {}".format(type))
+
+
+class MapTerrainSemanticColor(SemanticColor):
+    """
+    Do not modify this as it is for terrain generation. If you want your own palette, just add a new one or modify
+    class lMapSemanticColor
+    """
+    @staticmethod
+    def get_color(type):
+        if MetaDriveType.is_yellow_line(type):
+            # return (255, 0, 0, 0)
+            return (1, 0, 0, 0)
+        elif MetaDriveType.is_lane(type):
+            return (0, 1, 0, 0)
+        elif type == MetaDriveType.GROUND:
+            return (0, 0, 1, 0)
+        elif MetaDriveType.is_white_line(type) or MetaDriveType.is_road_edge(type):
+            return (0, 0, 0, 1)
+        else:
+            raise ValueError("Unsupported type: {}".format(type))

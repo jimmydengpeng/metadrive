@@ -1,28 +1,26 @@
+import logging
 from typing import Tuple
 
 import math
 import numpy as np
 
-from metadrive.component.lane.abs_lane import AbstractLane
-from metadrive.utils.interpolating_line import InterpolatingLine
-from metadrive.utils.opendrive_map_utils.elements.geometry import Line, Arc
-from metadrive.utils.opendrive_map_utils.map_load import get_lane_id
+from metadrive.component.lane.point_lane import PointLane
+from metadrive.utils.opendrive.elements.geometry import Line, Arc
+from metadrive.utils.opendrive.map_load import get_lane_id
 
 
-class OpenDriveLane(AbstractLane, InterpolatingLine):
+class OpenDriveLane(PointLane):
     ARC_SEGMENT_LENGTH = 1  # m
     """An OpenDrive Lane"""
     def __init__(self, width, lane_data) -> None:
-        AbstractLane.__init__(self)
         self.lane_data = lane_data
-        self.index = get_lane_id(lane_data)
-        self._section_index = lane_data.lane_section.idx
-        self.single_side = lane_data.lane_section.singleSide
-
+        self.width = width
         geos = self.lane_data.parentRoad.planView._geometries
         self._initialize_geometry(geos)
-        self.width = width
+        self.single_side = lane_data.lane_section.singleSide
 
+        self._section_index = lane_data.lane_section.idx
+        self.index = get_lane_id(lane_data)
         self.roadMark_color = lane_data.roadMark.get("color", None)
         self.roadMark_type = lane_data.roadMark.get("type", None)
         self.roadMark_material = lane_data.roadMark.get("material", None)
@@ -48,7 +46,7 @@ class OpenDriveLane(AbstractLane, InterpolatingLine):
                     points.pop()
             else:
                 raise ValueError("Only support Line and Arc, currently")
-        InterpolatingLine.__init__(self, points)
+        super(OpenDriveLane, self).__init__(points, self.width)
 
     def _arc_interpolate(self, radius, length, start_position, start_phase):
         ret = []
@@ -69,42 +67,6 @@ class OpenDriveLane(AbstractLane, InterpolatingLine):
         #         ret.append(np.array([np.cos(degree) * radius, np.sin(degree) * radius]) + origin)
         return ret
 
-    def width_at(self, longitudinal: float) -> float:
-        return self.width
-
-    def heading_theta_at(self, longitudinal: float) -> float:
-        """
-        In rad
-        """
-        return self.get_heading_theta(longitudinal)
-
-    def position(self, longitudinal: float, lateral: float) -> np.ndarray:
-        return self.get_point(longitudinal, lateral)
-
-    def local_coordinates(self, position: Tuple[float, float]):
-        ret = []  # ret_longitude, ret_lateral, sort_key
-        accumulate_len = 0
-        for seg in self.segment_property:
-            delta_x = position[0] - seg["start_point"][0]
-            delta_y = position[1] - seg["start_point"][1]
-            longitudinal = delta_x * seg["direction"][0] + delta_y * seg["direction"][1]
-            lateral = delta_x * seg["lateral_direction"][0] + delta_y * seg["lateral_direction"][1]
-            ret.append([accumulate_len + longitudinal, lateral])
-            accumulate_len += seg["length"]
-        ret.sort(key=lambda seg: abs(seg[-1]))
-        return ret[0][0], ret[0][1]
-
-    def construct_lane_in_block(self, block, lane_index=None):
-        """
-        Straight lane can be represented by one segment
-        """
-        middle = self.position(self.length / 2, 0)
-        end = self.position(self.length, 0)
-        direction_v = end - middle
-        theta = -math.atan2(direction_v[1], direction_v[0])
-        width = self.width_at(0) + block.SIDEWALK_LINE_DIST * 2
-        self.construct_lane_segment(block, middle, width, self.length, theta, lane_index)
-
     def is_lane_line(self):
         return True if self.roadMark_type in [
             "solid", "broken", "broken broken", "solid solid", "solid broken", "broken solid"
@@ -112,7 +74,7 @@ class OpenDriveLane(AbstractLane, InterpolatingLine):
 
     def destroy(self):
         self.width = None
-        # waymo lane line will be processed separately
+        # lane line will be processed separately
         self.start = None
         self.end = None
-        InterpolatingLine.destroy(self)
+        super(OpenDriveLane, self).destroy()

@@ -1,4 +1,4 @@
-from panda3d.core import SamplerState, Shader, ConfigVariableString
+from panda3d.core import SamplerState, Shader, ConfigVariableString, Texture
 
 from metadrive.base_class.base_object import BaseObject
 from metadrive.constants import CamMask
@@ -24,6 +24,7 @@ class SkyBox(BaseObject):
         skybox.set_scale(20000)
 
         skybox_texture = self.loader.loadTexture(AssetLoader.file_path("textures", "skybox.jpg"))
+        skybox_texture.set_format(Texture.F_srgb)
         skybox_texture.set_minfilter(SamplerState.FT_linear)
         skybox_texture.set_magfilter(SamplerState.FT_linear)
         skybox_texture.set_wrap_u(SamplerState.WM_repeat)
@@ -51,7 +52,7 @@ class SkyBox(BaseObject):
         skybox.set_shader(skybox_shader)
         skybox.reparentTo(self.origin)
         skybox.setZ(-4400)
-        skybox.setH(30)
+        skybox.setH(0)
 
     def step(self):
         if not self.render:
@@ -61,4 +62,4 @@ class SkyBox(BaseObject):
             self._accumulate = 0
         self._accumulate += 1
         factor = self.f * (1 - abs(self._accumulate - self.ROTATION_MAX / 2) * 2 / self.ROTATION_MAX)
-        self.set_heading_theta(self.origin.getH() + factor * 0.0035, rad_to_degree=False)
+        self.set_heading_theta(self.origin.getH() + factor * 0.0035, in_rad=False)

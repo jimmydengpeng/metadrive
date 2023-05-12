@@ -19,12 +19,13 @@ class PGMapManager(BaseManager):
 
         # for pgmaps
         start_seed = self.start_seed = self.engine.global_config["start_seed"]
-        env_num = self.env_num = self.engine.global_config["environment_num"]
+        env_num = self.env_num = self.engine.global_config["num_scenarios"]
         self.maps = {_seed: None for _seed in range(start_seed, start_seed + env_num)}
 
     def spawn_object(self, object_class, *args, **kwargs):
         # Note: Map instance should not be reused / recycled.
         map = self.engine.spawn_object(object_class, auto_fill_random_seed=False, force_spawn=True, *args, **kwargs)
+        self.engine._spawned_objects.pop(map.id)
         return map
 
     def load_map(self, map):
@@ -87,7 +88,7 @@ class PGMapManager(BaseManager):
         """
         if file_name is None:
             start_seed = self.engine.global_config["start_seed"]
-            end_seed = start_seed + self.engine.global_config["environment_num"]
+            end_seed = start_seed + self.engine.global_config["num_scenarios"]
             file_name = "{}_{}_{}.json".format(start_seed, end_seed, get_time_str())
         self.generate_all_maps()
         ret = {}

@@ -8,13 +8,13 @@ from panda3d.core import Vec3
 from metadrive.component.lane.straight_lane import StraightLane
 from metadrive.component.pgblock.first_block import FirstPGBlock
 from metadrive.component.vehicle.base_vehicle import BaseVehicle
-from metadrive.constants import BodyName
+from metadrive.constants import MetaDriveType
 from metadrive.constants import CollisionGroup
 from metadrive.engine.engine_utils import get_engine
 from metadrive.manager.base_manager import BaseManager
 from metadrive.utils import Config
-from metadrive.utils.coordinates_shift import panda_position, panda_heading
-from metadrive.utils.scene_utils import rect_region_detection
+from metadrive.utils.coordinates_shift import panda_vector, panda_heading
+from metadrive.utils.pg.utils import rect_region_detection
 
 
 class SpawnManager(BaseManager):
@@ -195,12 +195,12 @@ class SpawnManager(BaseManager):
                 vis_body = engine.render.attach_new_node(BulletGhostNode("debug"))
                 vis_body.node().addShape(shape)
                 vis_body.setH(panda_heading(lane_heading))
-                vis_body.setPos(panda_position(spawn_point_position, z=2))
+                vis_body.setPos(panda_vector(spawn_point_position, z=2))
                 engine.physics_world.dynamic_world.attach(vis_body.node())
                 vis_body.node().setIntoCollideMask(CollisionGroup.AllOff)
                 bp.force_set("need_debug", False)
 
-            if not result.hasHit() or result.node.getName() != BodyName.Vehicle:
+            if not result.hasHit() or result.node.getName() != MetaDriveType.VEHICLE:
                 new_bp = copy.deepcopy(bp).get_dict()
                 if randomize:
                     new_bp["config"] = self._randomize_position_in_slot(new_bp["config"])
@@ -218,7 +218,8 @@ class SpawnManager(BaseManager):
 
     def seed(self, random_seed):
         """this class is used to ranomly choose the spawn places, which will not be controlled by any seed"""
-        return
+        if self.engine.global_config["force_seed_spawn_manager"]:
+            super(SpawnManager, self).seed(random_seed)
 
     def update_destination_for(self, agent_id, vehicle_config):
         """

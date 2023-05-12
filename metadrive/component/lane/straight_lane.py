@@ -3,19 +3,19 @@ from typing import Tuple, Sequence, Union
 import math
 import numpy as np
 
-from metadrive.component.lane.metadrive_lane import MetaDriveLane
-from metadrive.constants import LineType
-from metadrive.utils.math_utils import norm
+from metadrive.component.lane.pg_lane import PGLane
+from metadrive.constants import PGLineType
+from metadrive.utils.math import norm
 
 
-class StraightLane(MetaDriveLane):
+class StraightLane(PGLane):
     """A lane going in straight line."""
     def __init__(
         self,
         start: Union[np.ndarray, Sequence[float]],
         end: Union[np.ndarray, Sequence[float]],
-        width: float = MetaDriveLane.DEFAULT_WIDTH,
-        line_types: Tuple[LineType, LineType] = (LineType.BROKEN, LineType.BROKEN),
+        width: float = PGLane.DEFAULT_WIDTH,
+        line_types: Tuple[PGLineType, PGLineType] = (PGLineType.BROKEN, PGLineType.BROKEN),
         forbidden: bool = False,
         speed_limit: float = 1000,
         priority: int = 0
@@ -35,20 +35,20 @@ class StraightLane(MetaDriveLane):
         self.start = np.array(start)
         self.end = np.array(end)
         self.width = width
-        self.line_types = line_types or [LineType.BROKEN, LineType.BROKEN]
+        self.line_types = line_types or [PGLineType.BROKEN, PGLineType.BROKEN]
         self.forbidden = forbidden
         self.priority = priority
         self.length = norm((self.end - self.start)[0], (self.end - self.start)[1])
         self.heading = math.atan2(self.end[1] - self.start[1], self.end[0] - self.start[0])
         self.direction = (self.end - self.start) / self.length
-        self.direction_lateral = np.array([-self.direction[1], self.direction[0]])
+        self.direction_lateral = np.array([self.direction[1], -self.direction[0]])
 
     def update_properties(self):
         super(StraightLane, self).__init__()
         self.length = norm((self.end - self.start)[0], (self.end - self.start)[1])
         self.heading = math.atan2(self.end[1] - self.start[1], self.end[0] - self.start[0])
         self.direction = (self.end - self.start) / self.length
-        self.direction_lateral = np.array([-self.direction[1], self.direction[0]])
+        self.direction_lateral = np.array([self.direction[1], -self.direction[0]])
 
     def position(self, longitudinal: float, lateral: float) -> np.ndarray:
         return self.start + longitudinal * self.direction + lateral * self.direction_lateral
@@ -72,13 +72,28 @@ class StraightLane(MetaDriveLane):
         self.end = end
         self.update_properties()
 
-    def construct_lane_in_block(self, block, lane_index=None):
+    def construct_lane_in_block(self, block, lane_index):
         """
         Straight lane can be represented by one segment
         """
         middle = self.position(self.length / 2, 0)
         end = self.position(self.length, 0)
         direction_v = end - middle
-        theta = -math.atan2(direction_v[1], direction_v[0])
+        theta = math.atan2(direction_v[1], direction_v[0])
         width = self.width_at(0) + block.SIDEWALK_LINE_DIST * 2
         self.construct_lane_segment(block, middle, width, self.length, theta, lane_index)
+
+    @property
+    def polygon(self):
+        if self._polygon is None:
+            polygon = []
+            longs = np.arange(0, self.length + self.POLYGON_SAMPLE_RATE, self.POLYGON_SAMPLE_RATE)
+            for k, lateral in enumerate([+self.width_at(0) / 2, -self.width_at(0) / 2]):
+                if k == 1:
+                    longs = longs[::-1]
+                for longitude in longs:
+                    point = self.position(longitude, lateral)
+                    polygon.append([point[0], point[1]])
+                    # polygon.append([point[0], point[1], 0.])
+            self._polygon = np.asarray(polygon)
+        return self._polygon

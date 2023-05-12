@@ -16,7 +16,7 @@ except ImportError:
 from metadrive.component.argoverse_block.argoverse_block import ArgoverseBlock
 from metadrive.component.lane.argoverse_lane import ArgoverseLane
 from metadrive.component.map.base_map import BaseMap
-from metadrive.constants import LineColor
+from metadrive.constants import PGLineColor
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class ArgoverseMap(BaseMap):
 
     def _post_process_lane(self, lane: ArgoverseLane):
         if lane.l_neighbor_id is not None and self.lane_id_lane[lane.l_neighbor_id].l_neighbor_id == lane.id:
-            lane.line_color = (LineColor.YELLOW, LineColor.GREY)
+            lane.line_color = (PGLineColor.YELLOW, PGLineColor.GREY)
 
     @staticmethod
     def extract_lane_segment_from_ET_element(child: ET.Element,
@@ -141,7 +141,7 @@ class ArgoverseMap(BaseMap):
         return pos
 
     @staticmethod
-    def metadrive_position(pos):
+    def metadrive_vector(pos):
         pos[1] *= -1
         return pos
 
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         {
             "city": "PIT",
             # "draw_map_resolution": 1024,
-            "center": ArgoverseMap.metadrive_position([xcenter, ycenter]),
+            "center": ArgoverseMap.metadrive_vector([xcenter, ycenter]),
             "radius": 100
         }
     )
@@ -173,6 +173,6 @@ if __name__ == "__main__":
     engine.enableMouse()
 
     # argoverse data set is as the same coordinates as panda3d
-    engine.main_camera.set_bird_view_pos(ArgoverseMap.metadrive_position([xcenter, ycenter]))
+    engine.main_camera.set_bird_view_pos(ArgoverseMap.metadrive_vector([xcenter, ycenter]))
     while True:
         map.engine.step()

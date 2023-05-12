@@ -26,7 +26,7 @@ class AIProtectPolicy(ManualControlPolicy):
                     throttle = saver_a[1]
                 elif save_level > 1e-3:
                     heading_diff = vehicle.heading_diff(vehicle.lane) - 0.5
-                    f = min(1 + abs(heading_diff) * vehicle.speed * vehicle.max_speed, save_level * 10)
+                    f = min(1 + abs(heading_diff) * vehicle.speed_km_h * vehicle.max_speed_km_h, save_level * 10)
                     # for out of road
                     if (obs[0] < 0.04 * f and heading_diff < 0) or (obs[1] < 0.04 * f and heading_diff > 0) or obs[
                         0] <= 1e-3 or \
@@ -34,7 +34,7 @@ class AIProtectPolicy(ManualControlPolicy):
                                 1] <= 1e-3:
                         steering = saver_a[0]
                         throttle = saver_a[1]
-                        if vehicle.speed < 5:
+                        if vehicle.speed_km_h < 5:
                             throttle = 0.5
                     # for collision
                     lidar_p = self.engine.agent_manager.observations[vehicle.id].cloud_points
@@ -56,4 +56,6 @@ class AIProtectPolicy(ManualControlPolicy):
             "takeover_end": True if pre_save and not vehicle.takeover else False,
             "takeover": vehicle.takeover if pre_save else False
         }
-        return (steering, throttle) if self.action_info["takeover"] else action
+        action = (steering, throttle) if self.action_info["takeover"] else action
+        self.action_info["action"] = action
+        return action

@@ -1,11 +1,12 @@
 import numpy as np
 
 from metadrive.component.lane.circular_lane import CircularLane
+from metadrive.component.pg_space import Parameter, BlockParameterSpace
 from metadrive.component.road_network.edge_road_network import EdgeRoadNetwork
 from metadrive.component.vehicle_navigation_module.base_navigation import BaseNavigation
 from metadrive.utils import clip, norm
-from metadrive.utils.scene_utils import ray_localization
-from metadrive.utils.space import Parameter, BlockParameterSpace
+from metadrive.utils.math import panda_vector
+from metadrive.utils.pg.utils import ray_localization
 
 
 class EdgeNetworkNavigation(BaseNavigation):
@@ -60,7 +61,8 @@ class EdgeNetworkNavigation(BaseNavigation):
             ref_lane = self.final_lane
             later_middle = (float(self.get_current_lane_num()) / 2 - 0.5) * self.get_current_lane_width()
             check_point = ref_lane.position(ref_lane.length, later_middle)
-            self._dest_node_path.setPos(check_point[0], -check_point[1], 1.8)
+            # self._dest_node_path.setPos(check_point[0], -check_point[1], 1.8)
+            self._dest_node_path.setPos(panda_vector(check_point[0], check_point[1], 1.8))
 
     def update_localization(self, ego_vehicle):
         position = ego_vehicle.position
@@ -94,13 +96,13 @@ class EdgeNetworkNavigation(BaseNavigation):
 
         if self._show_navi_info:  # Whether to visualize little boxes in the scene denoting the checkpoints
             pos_of_goal = checkpoint
-            self._goal_node_path.setPos(pos_of_goal[0], -pos_of_goal[1], 1.8)
+            self._goal_node_path.setPos(panda_vector(pos_of_goal[0], pos_of_goal[1], 1.8))
             self._goal_node_path.setH(self._goal_node_path.getH() + 3)
             self.navi_arrow_dir = [lanes_heading1, lanes_heading2]
             dest_pos = self._dest_node_path.getPos()
-            self._draw_line_to_dest(start_position=ego_vehicle.position, end_position=(dest_pos[0], -dest_pos[1]))
+            self._draw_line_to_dest(start_position=ego_vehicle.position, end_position=(dest_pos[0], dest_pos[1]))
             navi_pos = self._goal_node_path.getPos()
-            self._draw_line_to_navi(start_position=ego_vehicle.position, end_position=(navi_pos[0], -navi_pos[1]))
+            self._draw_line_to_navi(start_position=ego_vehicle.position, end_position=(navi_pos[0], navi_pos[1]))
 
     def _update_target_checkpoints(self, ego_lane_index) -> bool:
         """
@@ -140,7 +142,6 @@ class EdgeNetworkNavigation(BaseNavigation):
             ego_vehicle.heading,
             ego_vehicle.position,
             ego_vehicle.engine,
-            return_all_result=True,
             use_heading_filter=False,
             return_on_lane=True
         )
@@ -167,7 +168,9 @@ class EdgeNetworkNavigation(BaseNavigation):
         dir_norm = norm(dir_vec[0], dir_vec[1])
         if dir_norm > self.NAVI_POINT_DIST:  # if the checkpoint is too far then crop the direction vector
             dir_vec = dir_vec / dir_norm * self.NAVI_POINT_DIST
-        ckpt_in_heading, ckpt_in_rhs = ego_vehicle.projection(dir_vec)  # project to ego vehicle's coordination
+        ckpt_in_heading, ckpt_in_rhs = ego_vehicle.convert_to_local_coordinates(
+            dir_vec, 0.0
+        )  # project to ego vehicle's coordination
 
         # Dim 1: the relative position of the checkpoint in the target vehicle's heading direction.
         navi_information.append(clip((ckpt_in_heading / self.NAVI_POINT_DIST + 1) / 2, 0.0, 1.0))
@@ -189,12 +192,8 @@ class EdgeNetworkNavigation(BaseNavigation):
                 BlockParameterSpace.CURVE[Parameter.radius].max +
                 self.get_current_lane_num() * self.get_current_lane_width()
             )
-            dir = ref_lane.direction
-            if dir == 1:
-                angle = ref_lane.end_phase - ref_lane.start_phase
-            elif dir == -1:
-                angle = ref_lane.start_phase - ref_lane.end_phase
-
+            dir = -ref_lane.direction
+            angle = ref_lane.angle
         # Dim 3: The bending radius of current lane
         navi_information.append(clip(bendradius, 0.0, 1.0))
 

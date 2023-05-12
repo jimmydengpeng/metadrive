@@ -7,7 +7,9 @@ if __name__ == "__main__":
         {
             "use_render": True,
             "manual_control": True,
-            "environment_num": 100,
+            "num_scenarios": 100,
+            "show_coordinates": True,
+            "map": "SSSS",
             "accident_prob": 1.0,
             "vehicle_config": {
                 "show_lidar": True
@@ -16,7 +18,7 @@ if __name__ == "__main__":
     )
 
     o = env.reset()
-    print("vehicle num", len(env.engine.traffic_manager.vehicles))
+    # print("vehicle num", len(env.engine.traffic_manager.vehicles))
     for i in range(1, 100000):
         o, r, d, info = env.step([0, 1])
         env.render(text={})

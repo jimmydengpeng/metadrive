@@ -12,7 +12,7 @@ from metadrive.policy.replay_policy import WaymoReplayEgoCarPolicy
 class DemoWaymoEnv(WaymoEnv):
     def reset(self, force_seed=None):
         if self.engine is not None and force_seed is None:
-            seeds = [i for i in range(self.config["case_num"])]
+            seeds = [i for i in range(self.config["num_scenarios"])]
             seeds.remove(self.current_seed)
             force_seed = random.choice(seeds)
         super(DemoWaymoEnv, self).reset(force_seed=force_seed)
@@ -24,11 +24,10 @@ if __name__ == "__main__":
         {
             "manual_control": False,
             "agent_policy": WaymoReplayEgoCarPolicy,
-            "replay": True,
             "use_render": True,
-            "waymo_data_directory": AssetLoader.file_path(asset_path, "waymo", return_raw_style=False),
-            "case_num": 3,
-            "start_case_index": 0,
+            "data_directory": AssetLoader.file_path(asset_path, "waymo", return_raw_style=False),
+            "num_scenarios": 3,
+            "start_scenario_index": 0,
             "crash_vehicle_done": False,
             "crash_vehicle_penalty": 0,
             "vehicle_config": {
@@ -42,9 +41,9 @@ if __name__ == "__main__":
 
     for i in range(1, 100000):
         o, r, d, info = env.step([1.0, 0.])
-        print(env.vehicle.height)
+        # print(env.vehicle.height)
         env.render(text={"seed": env.current_seed, "reward": r})
         if d:
-            print(info["arrive_dest"])
+            # print(info["arrive_dest"])
             env.reset()
     env.close()

@@ -1,5 +1,4 @@
 import copy
-import logging
 from typing import Union
 
 import numpy as np
@@ -17,7 +16,8 @@ from metadrive.utils import clip, Config, get_np_random
 METADRIVE_DEFAULT_CONFIG = dict(
     # ===== Generalization =====
     start_seed=0,
-    environment_num=1,
+    num_scenarios=1,
+    environment_num=-1,  # This key is deprecated, use num_scenarios instead!
 
     # ===== Map Config =====
     map=3,  # int or string: an easy way to fill map_config
@@ -83,7 +83,8 @@ METADRIVE_DEFAULT_CONFIG = dict(
 
     # ===== Termination Scheme =====
     out_of_route_done=False,
-    on_continuous_line_done=True
+    on_continuous_line_done=True,
+    crash_vehicle_done=True
 )
 
 
@@ -102,7 +103,8 @@ class MetaDriveEnv(BaseEnv):
 
         # map setting
         self.start_seed = self.config["start_seed"]
-        self.env_num = self.config["environment_num"]
+        self.env_num = self.config["num_scenarios"]
+        self.in_stop = False
 
     def _merge_extra_config(self, config: Union[dict, "Config"]) -> "Config":
         config = self.default_config().update(config, allow_add_new_key=False)
@@ -113,10 +115,15 @@ class MetaDriveEnv(BaseEnv):
     def _post_process_config(self, config):
         config = super(MetaDriveEnv, self)._post_process_config(config)
         if not config["rgb_clip"]:
-            logging.warning(
+            self.logger.warning(
                 "You have set rgb_clip = False, which means the observation will be uint8 values in [0, 255]. "
                 "Please make sure you have parsed them later before feeding them to network!"
             )
+        if config["environment_num"] != -1:
+            self.logger.warning("environment_num is deprecated. Use num_scenarios instead!")
+            assert config["num_scenarios"] == 1
+            config["num_scenarios"] = config["environment_num"]
+
         config["map_config"] = parse_map_config(
             easy_map_config=config["map"], new_map_config=config["map_config"], default_config=self.default_config_copy
         )
@@ -161,36 +168,36 @@ class MetaDriveEnv(BaseEnv):
         }
         if self._is_arrive_destination(vehicle):
             done = True
-            logging.info("Episode ended! Reason: arrive_dest.")
+            self.logger.info("Episode ended! Reason: arrive_dest.")
             done_info[TerminationState.SUCCESS] = True
         if self._is_out_of_road(vehicle):
             done = True
-            logging.info("Episode ended! Reason: out_of_road.")
+            self.logger.info("Episode ended! Reason: out_of_road.")
             done_info[TerminationState.OUT_OF_ROAD] = True
-        if vehicle.crash_vehicle:
+        if vehicle.crash_vehicle and self.config["crash_vehicle_done"]:
             done = True
-            logging.info("Episode ended! Reason: crash vehicle ")
+            self.logger.info("Episode ended! Reason: crash vehicle ")
             done_info[TerminationState.CRASH_VEHICLE] = True
         if vehicle.crash_object:
             done = True
             done_info[TerminationState.CRASH_OBJECT] = True
-            logging.info("Episode ended! Reason: crash object ")
+            self.logger.info("Episode ended! Reason: crash object ")
         if vehicle.crash_building:
             done = True
             done_info[TerminationState.CRASH_BUILDING] = True
-            logging.info("Episode ended! Reason: crash building ")
+            self.logger.info("Episode ended! Reason: crash building ")
         if self.config["max_step_per_agent"] is not None and \
                 self.episode_lengths[vehicle_id] >= self.config["max_step_per_agent"]:
             done = True
             done_info[TerminationState.MAX_STEP] = True
-            logging.info("Episode ended! Reason: max step ")
+            self.logger.info("Episode ended! Reason: max step ")
 
         if self.config["horizon"] is not None and \
                 self.episode_lengths[vehicle_id] >= self.config["horizon"] and not self.is_multi_agent:
             # single agent horizon has the same meaning as max_step_per_agent
             done = True
             done_info[TerminationState.MAX_STEP] = True
-            logging.info("Episode ended! Reason: max step ")
+            self.logger.info("Episode ended! Reason: max step ")
 
         # for compatibility
         # crash almost equals to crashing with vehicles
@@ -258,7 +265,7 @@ class MetaDriveEnv(BaseEnv):
 
         reward = 0.0
         reward += self.config["driving_reward"] * (long_now - long_last) * lateral_factor * positive_road
-        reward += self.config["speed_reward"] * (vehicle.speed / vehicle.max_speed) * positive_road
+        reward += self.config["speed_reward"] * (vehicle.speed_km_h / vehicle.max_speed_km_h) * positive_road
 
         step_info["step_reward"] = reward
 
@@ -296,10 +303,34 @@ class MetaDriveEnv(BaseEnv):
     def switch_to_top_down_view(self):
         self.main_camera.stop_track()
 
+    def stop(self):
+        self.in_stop = not self.in_stop
+
+    def step(self, *args, **kwargs):
+        ret = super(MetaDriveEnv, self).step(*args, **kwargs)
+        while self.in_stop:
+            self.engine.taskMgr.step()
+        return ret
+
+    def next_seed_reset(self):
+        if self.current_seed + 1 < self.start_seed + self.env_num:
+            self.reset(self.current_seed + 1)
+        else:
+            self.logger.warning("Can't load next scenario! current seed is already the max scenario index")
+
+    def last_seed_reset(self):
+        if self.current_seed - 1 >= self.start_seed:
+            self.reset(self.current_seed - 1)
+        else:
+            self.logger.warning("Can't load last scenario! current seed is already the min scenario index")
+
     def setup_engine(self):
         super(MetaDriveEnv, self).setup_engine()
         self.engine.accept("b", self.switch_to_top_down_view)
         self.engine.accept("q", self.switch_to_third_person_view)
+        self.engine.accept("]", self.next_seed_reset)
+        self.engine.accept("[", self.last_seed_reset)
+        self.engine.accept("p", self.stop)
         from metadrive.manager.traffic_manager import PGTrafficManager
         from metadrive.manager.map_manager import PGMapManager
         self.engine.register_manager("map_manager", PGMapManager())

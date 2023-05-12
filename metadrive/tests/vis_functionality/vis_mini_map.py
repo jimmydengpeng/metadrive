@@ -3,19 +3,18 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 if __name__ == "__main__":
     env = MetaDriveEnv(
         {
-            "environment_num": 1,
+            "num_scenarios": 1,
             "traffic_density": 0.1,
             "start_seed": 4,
             "image_source": "mini_map",
             "manual_control": True,
             "use_render": True,
-            "offscreen_render": True,
+            "image_observation": True,
             "rgb_clip": True,
-            "headless_machine_render": False
         }
     )
     env.reset()
-    env.engine.accept("m", env.vehicle.image_sensors[env.config["image_source"]].save_image)
+    env.engine.accept("m", env.vehicle.get_camera([env.config["image_source"]]).save_image)
 
     for i in range(1, 100000):
         o, r, d, info = env.step([0, 1])
@@ -26,6 +25,6 @@ if __name__ == "__main__":
             #     ObservationType.show_gray_scale_array(o["image"][:, :, i])
             env.render(text={"can you see me": i})
         if d:
-            print("Reset")
+            # print("Reset")
             env.reset()
     env.close()

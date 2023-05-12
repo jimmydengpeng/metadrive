@@ -1,4 +1,5 @@
 import copy
+from metadrive.component.vehicle_module.vehicle_panel import VehiclePanel
 import logging
 
 from metadrive.component.pgblock.first_block import FirstPGBlock
@@ -14,6 +15,8 @@ MULTI_AGENT_METADRIVE_DEFAULT_CONFIG = dict(
     num_agents=15,
     # If num_agents is set to None, then endless vehicles will be added only the empty spawn points exist
     random_agent_model=False,
+    # If True, the spawn position will be deterministic for each episode, usually used for deterministic test
+    force_seed_spawn_manager=False,
 
     # Whether to terminate a vehicle if it crash with others. Since in MA env the crash is extremely dense, so
     # frequently done might not be a good idea.
@@ -61,7 +64,8 @@ MULTI_AGENT_METADRIVE_DEFAULT_CONFIG = dict(
     # ===== Environmental Setting =====
     traffic_density=0.,
     camera_height=4,
-    map_file_path=""
+    map_file_path="",
+    interface_panel=[VehiclePanel]
 )
 
 
@@ -271,7 +275,7 @@ def _vis():
             "use_render": True,
             "num_agents": 5,
             "start_seed": 8000,
-            "environment_num": 1,
+            "num_scenarios": 1,
             "map": "SSS",
             "vehicle_config": {
                 "vehicle_model": "s"

@@ -27,55 +27,51 @@ You can also verify the efficiency of MetaDrive through the printed messages. Th
 .. note:: Please do not run the above command in the folder that has a sub-folder called :code:`./metadrive`.
 
 
+
 .. _install_headless:
 
-Install MetaDrive with offscreen rendering
+Install MetaDrive with headless rendering
 ############################################
 
+The latest MetaDrive is already built to support headless-rendering. But for a double check, run following command::
+
+    python -m metadrive.examples.verify_headless_installation
+
+The script will generate two **same** images to current directory, one from agent observation, the other from panda3d internal rendering buffer.
+Please fetch anc check those images from cluster to ensure MetaDrive can draw scene and capture images correctly.
+By default, it only generates images from the main camera. Set ```--camera [rgb/depth]``` to check other cameras.
+Also, ```--cuda``` flag can be added to test image_on_cuda pipeline for your headless machine.
+
+If the captured images is complete as following, then the installation in headless machine is successful and please move on to :ref:`use_native_rendering`.
 
 
+
+
+.. _install_render_cuda:
+
+Install MetaDrive with advanced offscreen rendering
+#####################################################
 The default observation contains information on ego vehicle's states, Lidar-like cloud points showing neighboring vehicles, and information about navigation and tasks. Besides, you can also try the Pygame-based Top-down rendering (See :ref:`use_pygame_rendering`), which is also runnable in most headless machine without any special treatment.
 
 
 If the above observation is not enough for your RL algorithms and you wish to use the Panda3D camera to provide realistic RGB images as the observation, please continue reading this section.
 
+Generally, the default installation method supports getting rendered image. In this case, images will be returned as numpy array, which is retrieved from GPU and costs latency. We provide an advanced function to allow accessing images on GPU directly,
+so that you can read them by **Torch** or **Tensorflow**. With such a treatment, the image-based data sampling can be **10x** faster! See: https://github.com/metadriverse/metadrive/issues/306
 
-If your machine already has a screen, please try the following script to verify whether the Panda3D window can successfully pop up.
+Requirements:
 
-    python -m metadrive.examples.drive_in_single_agent_env
+* CUDA Runtime >= 12.0
+* Windows or Linux
 
-.. note:: Please do not run the above command in the folder that has a sub-folder called :code:`./metadrive`.
+Installation:
 
-If the screen successfully shows up, then you can move on to :ref:`use_native_rendering` and skip this section.
-
-
-However, if you want to use image to train your agent on headless machine, you have to compile a customized Panda3D.
-The customized Panda3D is built from the source code of panda3d following the instructions in `Panda3D: Building Panda3D <https://github.com/panda3d/panda3d#building-panda3d>`_. Please refer to the link to setup Panda3D dependencies. After setting up dependencies, we build our own wheel through the following command::
-
-    python ./makepanda/makepanda.py --everything --no-x11 --no-opencv --no-fmodex \
-      --python-incdir /path/to/your/conda_env/include/ \
-      --python-libdir /path/to/your/conda_env/lib/ \
-      --thread 8 --wheel
+#. After cloning the repo, use ``pip install -e .[cuda]`` to install, or ``pip install -e metadrive-simulator[cuda]`` if you are using pip.
+#. Install Torch: ``conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge``
+#. Install CuPy: ``conda install -c conda-forge cupy``
+#. Install Cuda-Python: ``conda install -c nvidia cuda-python``
+#. For verifying your installation, cd ``metadrive/examples`` and run ``python verify_image_on_cuda.py``
 
 
-It will give you a Panda3D wheel which can run in EGL environment without the X11 support. Now please install the wheel file by::
-
-    pip install panda3d-1.10.xxx.whl
-
-
-In principle, the installation of MetaDrive in headless machine is finished.
-To verify the installation on cluster, run following command instead::
-
-    python -m metadrive.tests.test_headless
-
-
-The script will generate images to current directory. Please fetch anc check those images from cluster to ensure MetaDrive can draw scene and capture images.
-
-If the captured images is complete as following, then the installation in headless machine is successful and please move on to :ref:`use_native_rendering`.
-
-.. note:: You have to set the :code:`config["headless_machine_render"] = True` when training the agent using images as observation.
-
-.. warning:: Compiling Panda3D from source might require the **administrator permission** to install some libraries.
-    We are working to provide a pre-built Panda3D for cluster users of MetaDrive to make it easy to use on headless machines.
-
-
+After running the script, if no error messages, then congratulations! It works. you can also use ``python verify_image_on_cuda.py --render`` to visualize the image observations.
+Besides, a ``--native`` flag can be added to benchmark the original image collection pipeline as a comparison.  

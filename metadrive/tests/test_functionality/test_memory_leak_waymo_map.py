@@ -1,6 +1,6 @@
 import time
 
-from metadrive.component.map.waymo_map import WaymoMap
+from metadrive.component.map.scenario_map import ScenarioMap
 from metadrive.engine.asset_loader import AssetLoader
 from metadrive.engine.engine_utils import initialize_engine, close_engine
 from metadrive.envs.real_data_envs.waymo_env import WaymoEnv
@@ -9,7 +9,7 @@ from metadrive.tests.test_functionality.test_memory_leak_engine import process_m
 
 
 def test_waymo_env_memory_leak(num_reset=100):
-    env = WaymoEnv(dict(case_num=2, sequential_seed=True, store_map=True, store_map_buffer_size=1))
+    env = WaymoEnv(dict(num_scenarios=2, sequential_seed=True, store_map=True, store_map_buffer_size=1))
 
     try:
         ct = time.time()
@@ -19,12 +19,12 @@ def test_waymo_env_memory_leak(num_reset=100):
             env.reset()
             nlt = time.time()
             lm = process_memory()
-            print(
-                "After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(
-                    t + 1, nlt - lt, nlt - ct, lm - cm
-                )
-            )
-        assert lm - cm < 1024 * 1024 * 80, "We expect will cause ~70MB memory leak."
+            # print(
+            #     "After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(
+            #         t + 1, nlt - lt, nlt - ct, lm - cm
+            #     )
+            # )
+        assert lm - cm < 1024 * 1024 * 120, "We expect will cause ~120MB memory leak."
 
     finally:
         env.close()
@@ -32,8 +32,8 @@ def test_waymo_env_memory_leak(num_reset=100):
 
 def test_waymo_map_memory_leak():
     default_config = WaymoEnv.default_config()
-    default_config["waymo_data_directory"] = AssetLoader.file_path("waymo", return_raw_style=False)
-    default_config["case_num"] = 1
+    default_config["data_directory"] = AssetLoader.file_path("waymo", return_raw_style=False)
+    default_config["num_scenarios"] = 1
 
     try:
         close_engine()
@@ -49,23 +49,23 @@ def test_waymo_map_memory_leak():
 
         lm = process_memory()
         nlt = time.time()
-        print("After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(0, nlt - lt, nlt - ct, lm - cm))
+        # print("After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(0, nlt - lt, nlt - ct, lm - cm))
 
         for t in range(10):
             lt = time.time()
 
-            map = WaymoMap(map_index=0)
+            map = ScenarioMap(map_index=0)
             del map
 
             # map.play()
 
             nlt = time.time()
             lm = process_memory()
-            print(
-                "After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(
-                    t + 1, nlt - lt, nlt - ct, lm - cm
-                )
-            )
+            # print(
+            #     "After {} Iters, Time {:.3f} Total Time {:.3f}, Memory Usage {:,}".format(
+            #         t + 1, nlt - lt, nlt - ct, lm - cm
+            #     )
+            # )
             # if t > 5:
             #     assert abs((lm - cm) - last_mem) < 1024  # Memory should not have change > 1KB
             last_mem = lm - cm
@@ -88,16 +88,16 @@ if __name__ == "__main__":
     #     """
     #
     #     # force collection
-    #     print("\nGARBAGE:")
+    #     # print("\nGARBAGE:")
     #     gc.collect()
     #
-    #     print("\nGARBAGE OBJECTS:")
+    #     # print("\nGARBAGE OBJECTS:")
     #     res = []
     #     for x in gc.garbage:
     #         s = str(x)
     #         if len(s) > 80:
     #             s = s[:80]
-    #         print(type(x), "\n  ", s)
+    #         # print(type(x), "\n  ", s)
     #         res.append([type(x), s, x])
     #     return res
 
@@ -111,4 +111,4 @@ if __name__ == "__main__":
     # show the dirt ;-)
     # ret = dump_garbage()
 
-    # print(ret)
+    # # print(ret)

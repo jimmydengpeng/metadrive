@@ -1,25 +1,38 @@
+import numpy as np
 from panda3d.core import Vec3
 
-from metadrive.utils.math_utils import Vector
+from metadrive.utils.math import Vector
+from metadrive.utils.math import wrap_to_pi
 
-
-# In MetaDrive, the direction of y axis is adverse to Panda3d. It is required to use these function to transform when sync
-# the two coordinates.
-# MetaDrive:
+#
+# Now all coordinates are the same and are all in right-handed
+# MetaDrive (right handed):
 #                     ^ x
 #                     |
 #                     |
-#                     |----------> y
-#                    Ego
+#         y<----------|
+#               EgoCar/Object/Pedestrian/Cyclist and so on
 #
-# Panda3d:
+# Panda3d (right handed):
 #                     ^ x
 #                     |
 #                     |
 #         y <---------|
-#                    Ego
+#                world origin
+# Note: Camera is facing to y-axis:
+#                         ^ x
+#                         |
+#                         |
+#                  | \    |
+#         y <------|  |---|
+#                  | /    |
+#                camera origin
+
 # Note: the models loaded in Panda3d are facing to y axis, and thus -90' is required to make it face to x axis
-def panda_position(position, z=0.0) -> Vec3:
+# These APIs are still available for compatibility, but doesn't apply any operation to the input vector/heading
+
+
+def panda_vector(position, z=0.0) -> Vec3:
     """
     Give a 2d or 3d position in MetaDrive, transform it to Panda3d world.
     If the position is a 2d array, height will be determined by the value of z.
@@ -30,10 +43,10 @@ def panda_position(position, z=0.0) -> Vec3:
     """
     if len(position) == 3:
         z = position[2]
-    return Vec3(position[0], -position[1], z)
+    return Vec3(position[0], position[1], z)
 
 
-def metadrive_position(position: Vec3) -> "Vector":
+def metadrive_vector(position: Vec3) -> "Vector":
     """
     Transform the position in Panda3d to MetaDrive world
     :param position: Vec3, position in Panda3d
@@ -41,7 +54,7 @@ def metadrive_position(position: Vec3) -> "Vector":
     """
     # return np.array([position[0], -position[1]])
     # return position[0], -position[1]
-    return Vector((position[0], -position[1]))
+    return Vector((position[0], position[1]))
 
 
 def panda_heading(heading: float) -> float:
@@ -50,7 +63,8 @@ def panda_heading(heading: float) -> float:
     :param heading: float, heading in MetaDrive (degree)
     :return: heading (degree)
     """
-    return -heading
+    # return -heading
+    return heading
 
 
 def metadrive_heading(heading: float) -> float:
@@ -59,21 +73,37 @@ def metadrive_heading(heading: float) -> float:
     :param heading: float, heading in panda3d (degree)
     :return: heading (degree)
     """
-    return -heading
-
-
-def waymo_2_metadrive_position(position):
-    return position[0], -position[1]
-
-
-def waymo_2_metadrive_heading(heading):
-    return -heading
-
-
-def nuplan_2_metadrive_position(position, nuplan_center=(0, 0)):
-    "All positions in nuplan should be centered in (0,0) to avoid numerical explosion"
-    return position[0] - nuplan_center[0], position[1] - nuplan_center[1]
-
-
-def nuplan_2_metadrive_heading(heading):
+    # return -heading
     return heading
+
+
+def nuplan_to_metadrive_vector(vector, nuplan_center=(0, 0)):
+    "All vec in nuplan should be centered in (0,0) to avoid numerical explosion"
+    vector = np.array(vector)
+    # if len(vector.shape) == 1:
+    #     vector[1] *= -1
+    # else:
+    #     vector[:, 1] *= -1
+    vector -= np.asarray(nuplan_center)
+    return vector
+
+
+def metadrive_to_nuplan_vector(vector, nuplan_center=(0, 0)):
+    "All vec in nuplan should be centered in (0,0) to avoid numerical explosion"
+    vector = np.array(vector)
+    vector += nuplan_center
+    # if len(vector.shape) == 1:
+    #     vector[1] *= -1
+    # else:
+    #     vector[:, 1] *= -1
+    return vector
+
+
+def nuplan_to_metadrive_heading(heading):
+    # return -wrap_to_pi(heading)
+    return wrap_to_pi(heading)
+
+
+def metadrive_to_nuplan_heading(heading):
+    # return -wrap_to_pi(heading)
+    return wrap_to_pi(heading)

@@ -9,8 +9,8 @@ from metadrive.component.lane.abs_lane import AbstractLane
 from metadrive.component.vehicle_module.distance_detector import DistanceDetector
 from metadrive.constants import CamMask, CollisionGroup
 from metadrive.engine.engine_utils import get_engine
-from metadrive.utils.coordinates_shift import panda_position
-from metadrive.utils.math_utils import norm, clip
+from metadrive.utils.coordinates_shift import panda_vector
+from metadrive.utils.math import norm, clip
 from metadrive.utils.utils import get_object_from_node
 
 
@@ -24,7 +24,7 @@ class Lidar(DistanceDetector):
     def __init__(self, num_lasers: int = 240, distance: float = 50, enable_show=False):
         super(Lidar, self).__init__(num_lasers, distance, enable_show)
         self.origin.hide(CamMask.RgbCam | CamMask.Shadow | CamMask.Shadow | CamMask.DepthCam)
-        self.mask = CollisionGroup.Vehicle | CollisionGroup.InvisibleWall | CollisionGroup.TrafficObject
+        self.mask = CollisionGroup.can_be_lidar_detected()
 
         # lidar can calculate the detector mask by itself
         self.angle_delta = 360 / num_lasers if num_lasers > 0 else None
@@ -60,7 +60,7 @@ class Lidar(DistanceDetector):
         norm_distance = norm(diff[0], diff[1])
         if norm_distance > self.perceive_distance:
             diff = diff / norm_distance * self.perceive_distance
-        relative = vehicle.projection(diff)
+        relative = vehicle.convert_to_local_coordinates(diff, 0.0)
         return relative
 
     def get_surrounding_vehicles_info(self, ego_vehicle, detected_objects, num_others: int = 4, add_others_navi=False):
@@ -76,15 +76,17 @@ class Lidar(DistanceDetector):
                 ego_position = ego_vehicle.position
 
                 # assert isinstance(vehicle, IDMVehicle or Base), "Now MetaDrive Doesn't support other vehicle type"
-                relative_position = ego_vehicle.projection(vehicle.position - ego_position)
+                relative_position = ego_vehicle.convert_to_local_coordinates(vehicle.position, ego_position)
                 # It is possible that the centroid of other vehicle is too far away from ego but lidar shed on it.
                 # So the distance may greater than perceive distance.
                 res.append(clip((relative_position[0] / self.perceive_distance + 1) / 2, 0.0, 1.0))
                 res.append(clip((relative_position[1] / self.perceive_distance + 1) / 2, 0.0, 1.0))
 
-                relative_velocity = ego_vehicle.projection(vehicle.velocity - ego_vehicle.velocity)
-                res.append(clip((relative_velocity[0] / ego_vehicle.max_speed + 1) / 2, 0.0, 1.0))
-                res.append(clip((relative_velocity[1] / ego_vehicle.max_speed + 1) / 2, 0.0, 1.0))
+                relative_velocity = ego_vehicle.convert_to_local_coordinates(
+                    vehicle.velocity_km_h, ego_vehicle.velocity_km_h
+                )
+                res.append(clip((relative_velocity[0] / ego_vehicle.max_speed_km_h + 1) / 2, 0.0, 1.0))
+                res.append(clip((relative_velocity[1] / ego_vehicle.max_speed_km_h + 1) / 2, 0.0, 1.0))
 
                 if add_others_navi:
                     ckpt1, ckpt2 = vehicle.navigation.get_checkpoints()
@@ -137,7 +139,7 @@ class Lidar(DistanceDetector):
         return mask, objs
 
     def get_surrounding_objects(self, vehicle):
-        self.broad_detector.setPos(panda_position(vehicle.position))
+        self.broad_detector.setPos(panda_vector(vehicle.position))
         physics_world = vehicle.engine.physics_world.dynamic_world
         contact_results = physics_world.contactTest(self.broad_detector.node(), True).getContacts()
         objs = set()

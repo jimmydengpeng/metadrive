@@ -5,7 +5,7 @@ from metadrive.component.road_network import Road
 from metadrive.envs.marl_envs.multi_agent_metadrive import MultiAgentMetaDrive
 from metadrive.manager.map_manager import PGMapManager
 from metadrive.utils import Config
-from metadrive.utils.math_utils import clip
+from metadrive.utils.math import clip
 
 MABottleneckConfig = dict(
     spawn_roads=[Road(FirstPGBlock.NODE_2, FirstPGBlock.NODE_3), -Road(Split.node(2, 0, 0), Split.node(2, 0, 1))],
@@ -112,7 +112,7 @@ class MultiAgentBottleneckEnv(MultiAgentMetaDrive):
 
         reward = 0.0
         reward += self.config["driving_reward"] * (long_now - long_last) * lateral_factor
-        reward += self.config["speed_reward"] * (vehicle.speed / vehicle.max_speed)
+        reward += self.config["speed_reward"] * (vehicle.speed_km_h / vehicle.max_speed_km_h)
 
         step_info["step_reward"] = reward
 

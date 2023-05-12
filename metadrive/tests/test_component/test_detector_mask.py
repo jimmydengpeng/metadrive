@@ -97,7 +97,7 @@ class DetectorMask:
 
         small_index = math.floor(small_angle / self.angle_delta)
         large_index = math.ceil(large_angle / self.angle_delta)
-        if large_angle < small_angle:  # We are in the case like small=355, large=5
+        if large_angle < small_angle:  # We are in the scenario like small=355, large=5
             self.masks[name][small_index:] = True
             self.masks[name][:large_index + 1] = True
         else:
@@ -241,7 +241,7 @@ def test_detector_mask():
                 for stick_1_heading_deg in angles1:
                     for stick_2_heading_deg in angles2:
                         _test_mask(mask, stick_1_heading_deg, stick_2_heading_deg, max_span, pos1_x, pos2_x)
-                print("Finish. ", max_span, pos1_x, pos2_x)
+                # print("Finish. ", max_span, pos1_x, pos2_x)
 
 
 def test_detector_mask_in_lidar():
@@ -264,7 +264,7 @@ def test_detector_mask_in_lidar():
         for tt in range(3000):
             o, r, d, i = env.step([0, 1])
 
-            print("We have: {} vehicles!".format(env.engine.traffic_manager.get_vehicle_num()))
+            # print("We have: {} vehicles!".format(env.engine.traffic_manager.get_vehicle_num()))
 
             v = env.vehicle
             c_p, objs = v.lidar.perceive(v, detector_mask=None)

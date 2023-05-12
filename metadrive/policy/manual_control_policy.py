@@ -9,6 +9,9 @@ class ManualControlPolicy(EnvInputPolicy):
     """
     Control the current track vehicle
     """
+
+    DEBUG_MARK_COLOR = (252, 244, 3, 255)
+
     def __init__(self, obj, seed):
         super(ManualControlPolicy, self).__init__(obj, seed)
         config = self.engine.global_config
@@ -56,9 +59,14 @@ class ManualControlPolicy(EnvInputPolicy):
         is_track_vehicle = self.engine.agent_manager.get_agent(agent_id) is self.engine.current_track_vehicle
         not_in_native_bev = (self.engine.main_camera is None) or (not self.engine.main_camera.is_bird_view_camera())
         if self.engine.global_config["manual_control"] and is_track_vehicle and not_in_native_bev:
-            return self.controller.process_input(self.engine.current_track_vehicle)
+            action = self.controller.process_input(self.engine.current_track_vehicle)
+            self.action_info["manual_control"] = True
         else:
-            return super(ManualControlPolicy, self).act(agent_id)
+            action = super(ManualControlPolicy, self).act(agent_id)
+            self.action_info["manual_control"] = False
+
+        self.action_info["action"] = action
+        return action
 
     def toggle_takeover(self):
         if self.engine.current_track_vehicle is not None:

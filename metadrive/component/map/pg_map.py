@@ -1,4 +1,6 @@
 import copy
+from metadrive.type import MetaDriveType
+from metadrive.constants import PGLineType, PGLineColor
 from typing import List
 
 from panda3d.core import NodePath
@@ -7,6 +9,7 @@ from metadrive.component.algorithm.BIG import BigGenerateMethod, BIG
 from metadrive.component.map.base_map import BaseMap
 from metadrive.component.pgblock.first_block import FirstPGBlock
 from metadrive.component.road_network.node_road_network import NodeRoadNetwork
+from metadrive.constants import Decoration
 from metadrive.engine.core.physics_world import PhysicsWorld
 from metadrive.utils import Config
 
@@ -114,4 +117,51 @@ class PGMap(BaseMap):
             map_config.append(json_config)
 
         saved_data = copy.deepcopy({self.BLOCK_SEQUENCE: map_config, "map_config": self.config.copy()})
+        saved_data.update(super(PGMap, self).get_meta_data())
         return saved_data
+
+    def show_coordinates(self):
+        lanes = []
+        for to_ in self.road_network.graph.values():
+            for lanes_to_add in to_.values():
+                lanes += lanes_to_add
+        self.engine.show_lane_coordinates(lanes)
+
+    def get_boundary_line_vector(self, interval):
+        map = self
+        ret = {}
+        for _from in map.road_network.graph.keys():
+            decoration = True if _from == Decoration.start else False
+            for _to in map.road_network.graph[_from].keys():
+                for l in map.road_network.graph[_from][_to]:
+                    sides = 2 if l is map.road_network.graph[_from][_to][-1] or decoration else 1
+                    for side in range(sides):
+                        type = l.line_types[side]
+                        if type == PGLineType.NONE:
+                            continue
+                        color = l.line_colors[side]
+                        line_type = self.get_line_type(type, color)
+                        lateral = l.width_at(0) / 2
+                        if side == 0:
+                            lateral *= -1
+                        ret["{}_{}".format(l.index, side)] = {
+                            "type": line_type,
+                            "polyline": l.get_polyline(interval, lateral),
+                            "speed_limit_kmh": l.speed_limit
+                        }
+        return ret
+
+    def get_line_type(self, type, color):
+        if type == PGLineType.CONTINUOUS and color == PGLineColor.YELLOW:
+            return MetaDriveType.LINE_SOLID_SINGLE_YELLOW
+        elif type == PGLineType.BROKEN and color == PGLineColor.YELLOW:
+            return MetaDriveType.LINE_BROKEN_SINGLE_YELLOW
+        elif type == PGLineType.CONTINUOUS and color == PGLineColor.GREY:
+            return MetaDriveType.LINE_SOLID_SINGLE_WHITE
+        elif type == PGLineType.BROKEN and color == PGLineColor.GREY:
+            return MetaDriveType.LINE_BROKEN_SINGLE_WHITE
+        elif type == PGLineType.SIDE:
+            return MetaDriveType.BOUNDARY_LINE
+        else:
+            # Unknown line type
+            return MetaDriveType.LINE_UNKNOWN

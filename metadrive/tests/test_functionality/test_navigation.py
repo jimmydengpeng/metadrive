@@ -5,9 +5,9 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 
 
 class Target:
-    def __init__(self, target_lateral, target_speed):
+    def __init__(self, target_lateral, target_speed_km_h):
         self.lateral = target_lateral
-        self.speed = target_speed
+        self.speed_km_h = target_speed_km_h
 
     def go_right(self):
         self.lateral += 0.25 if self.lateral < 0.625 else 0
@@ -16,16 +16,16 @@ class Target:
         self.lateral -= 0.25 if self.lateral > 0.125 else 0
 
     def faster(self):
-        self.speed += 10
+        self.speed_km_h += 10
 
     def slower(self):
-        self.speed -= 10
+        self.speed_km_h -= 10
 
 
 def test_navigation(vis=False):
     env = MetaDriveEnv(
         {
-            "environment_num": 10,
+            "num_scenarios": 10,
             "traffic_density": 0.0,
             "use_render": vis,
             "start_seed": 5,
@@ -51,7 +51,7 @@ def test_navigation(vis=False):
     steering_error = o[0] - target.lateral
     steering = steering_controller.get_result(steering_error)
 
-    acc_error = env.vehicles[env.DEFAULT_AGENT].speed - target.speed
+    acc_error = env.vehicles[env.DEFAULT_AGENT].speed_km_h - target.speed_km_h
     acc = acc_controller.get_result(acc_error)
     for i in range(1, 1000000 if vis else 2000):
         o, r, d, info = env.step([-steering, acc])
@@ -60,8 +60,8 @@ def test_navigation(vis=False):
         steering_error = o[0] - target.lateral
         steering = steering_controller.get_result(steering_error)
 
-        t_speed = target.speed if abs(o[12] - 0.5) < 0.01 else target.speed - 10
-        acc_error = env.vehicles[env.DEFAULT_AGENT].speed - t_speed
+        t_speed = target.speed_km_h if abs(o[12] - 0.5) < 0.01 else target.speed_km_h - 10
+        acc_error = env.vehicles[env.DEFAULT_AGENT].speed_km_h - t_speed
         acc = acc_controller.get_result(acc_error)
         if vis:
             if i < 700:
@@ -78,7 +78,7 @@ def test_navigation(vis=False):
             else:
                 env.render()
         if d:
-            print("Reset")
+            # print("Reset")
             o = env.reset()
 
             steering_controller.reset()
@@ -86,7 +86,7 @@ def test_navigation(vis=False):
             steering = steering_controller.get_result(steering_error, o[11])
 
             acc_controller.reset()
-            acc_error = env.vehicles[env.DEFAULT_AGENT].speed - target.speed
+            acc_error = env.vehicles[env.DEFAULT_AGENT].speed_km_h - target.speed_km_h
             acc = acc_controller.get_result(acc_error)
     env.close()
 

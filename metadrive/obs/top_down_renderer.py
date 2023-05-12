@@ -4,15 +4,14 @@ from typing import Optional, Union, Iterable
 
 import numpy as np
 
-from metadrive.component.map.waymo_map import WaymoMap
+from metadrive.component.map.nuplan_map import NuPlanMap
+from metadrive.component.map.scenario_map import ScenarioMap
 from metadrive.constants import Decoration, TARGET_VEHICLES
-from metadrive.constants import WaymoLaneProperty
-from metadrive.engine.engine_utils import get_engine
+from metadrive.scenario.scenario_description import ScenarioDescription
 from metadrive.obs.top_down_obs_impl import WorldSurface, VehicleGraphics, LaneGraphics
 from metadrive.utils.interpolating_line import InterpolatingLine
-from metadrive.utils.map_utils import is_map_related_instance
 from metadrive.utils.utils import import_pygame
-from metadrive.utils.waymo_utils.waymo_utils import convert_polyline_to_metadrive
+from metadrive.utils.utils import is_map_related_instance
 
 pygame = import_pygame()
 
@@ -23,11 +22,11 @@ history_object = namedtuple("history_object", "name position heading_theta WIDTH
 def draw_top_down_map(
     map,
     resolution: Iterable = (512, 512),
-    simple_draw=True,
+    draw_drivable_area=True,
     return_surface=False,
     film_size=None,
     reverse_color=False,
-    road_color=color_white
+    road_color=color_white,
 ) -> Optional[Union[np.ndarray, pygame.Surface]]:
     import cv2
     film_size = film_size or map.film_size
@@ -45,21 +44,35 @@ def draw_top_down_map(
     centering_pos = ((b_box[0] + b_box[1]) / 2, (b_box[2] + b_box[3]) / 2)
     surface.move_display_window_to(centering_pos)
 
-    if isinstance(map, WaymoMap):
-        assert not simple_draw, "Simple Draw does not support now"
-        for data in map.blocks[-1].waymo_map_data.values():
-            if WaymoLaneProperty.POLYLINE not in data:
-                continue
-            type = data.get("type", None)
-            waymo_line = InterpolatingLine(convert_polyline_to_metadrive(data[WaymoLaneProperty.POLYLINE]))
-            LaneGraphics.display_waymo(waymo_line, type, surface)
+    if isinstance(map, ScenarioMap):
+        if draw_drivable_area:
+            for lane_info in map.road_network.graph.values():
+                LaneGraphics.draw_drivable_area(lane_info.lane, surface, color=road_color)
+        else:
+            for data in map.blocks[-1].map_data.values():
+                if ScenarioDescription.POLYLINE not in data:
+                    continue
+                type = data.get("type", None)
+                waymo_line = InterpolatingLine(np.asarray(data[ScenarioDescription.POLYLINE]))
+                LaneGraphics.display_waymo(waymo_line, type, surface)
+
+    elif isinstance(map, NuPlanMap):
+        if draw_drivable_area:
+            for lane_info in map.road_network.graph.values():
+                LaneGraphics.draw_drivable_area(lane_info.lane, surface, color=road_color)
+        else:
+            for block in map.attached_blocks + [map.boundary_block]:
+                for boundary in block.lines.values():
+                    line = InterpolatingLine(boundary.points)
+                    LaneGraphics.display_nuplan(line, boundary.type, boundary.color, surface)
+
     else:
         for _from in map.road_network.graph.keys():
             decoration = True if _from == Decoration.start else False
             for _to in map.road_network.graph[_from].keys():
                 for l in map.road_network.graph[_from][_to]:
-                    if simple_draw:
-                        LaneGraphics.simple_draw(l, surface, color=road_color)
+                    if draw_drivable_area:
+                        LaneGraphics.draw_drivable_area(l, surface, color=road_color)
                     else:
                         two_side = True if l is map.road_network.graph[_from][_to][-1] or decoration else False
                         LaneGraphics.display(l, surface, two_side, use_line_color=True)
@@ -139,6 +152,7 @@ class TopDownRenderer:
         show_agent_name=False,
         camera_position=None,
         track_target_vehicle=False,
+        draw_target_vehicle_trajectory=False,
         **kwargs
         # current_track_vehicle=None
     ):
@@ -146,14 +160,18 @@ class TopDownRenderer:
         self.position = camera_position
         self.track_target_vehicle = track_target_vehicle
         self.show_agent_name = show_agent_name
+        self.draw_target_vehicle_trajectory = draw_target_vehicle_trajectory
+
         if self.show_agent_name:
             pygame.init()
+
         # self.engine = get_engine()
         # self._screen_size = screen_size
         self.pygame_font = None
         self.map = self.engine.current_map
         self.stack_frames = deque(maxlen=num_stack)
         self.history_objects = deque(maxlen=num_stack)
+        self.history_target_vehicle = []
         self.history_smooth = history_smooth
         # self.current_track_vehicle = current_track_vehicle
         if self.track_target_vehicle:
@@ -167,7 +185,11 @@ class TopDownRenderer:
         # Setup the canvas
         # (1) background is the underlying layer. It is fixed and will never change unless the map changes.
         self._background_canvas = draw_top_down_map(
-            self.map, simple_draw=False, return_surface=True, film_size=film_size, road_color=road_color
+            self.map,
+            draw_drivable_area=False,
+            return_surface=True,
+            film_size=film_size,
+            road_color=road_color,
         )
         if self._light_background:
             pixels = pygame.surfarray.pixels2d(self._background_canvas)
@@ -223,6 +245,19 @@ class TopDownRenderer:
         this_frame_objects = self._append_frame_objects(objects)
         self.history_objects.append(this_frame_objects)
 
+        if self.draw_target_vehicle_trajectory:
+            self.history_target_vehicle.append(
+                history_object(
+                    name=self.current_track_vehicle.name,
+                    heading_theta=self.current_track_vehicle.heading_theta,
+                    WIDTH=self.current_track_vehicle.top_down_width,
+                    LENGTH=self.current_track_vehicle.top_down_length,
+                    position=self.current_track_vehicle.position,
+                    color=self.current_track_vehicle.top_down_color,
+                    done=False
+                )
+            )
+
         self._handle_event()
         self.refresh()
         self._draw(*args, **kwargs)
@@ -258,7 +293,11 @@ class TopDownRenderer:
     def reset(self, map):
         # Reset the super large background
         self._background_canvas = draw_top_down_map(
-            map, simple_draw=False, return_surface=True, film_size=self._background_size, road_color=self.road_color
+            map,
+            draw_drivable_area=False,
+            return_surface=True,
+            film_size=self._background_size,
+            road_color=self.road_color,
         )
         self._light_background = self._light_background
         if self._light_background:
@@ -273,6 +312,9 @@ class TopDownRenderer:
         self._runtime_canvas = self._background_canvas.copy()
         # self._runtime_output = self._background_canvas.copy()
         self._background_size = tuple(self._background_canvas.get_size())
+
+        self.history_objects.clear()
+        self.history_target_vehicle.clear()
 
     @property
     def current_track_vehicle(self):
@@ -300,6 +342,7 @@ class TopDownRenderer:
         """
         if len(self.history_objects) == 0:
             return
+
         for i, objects in enumerate(self.history_objects):
             i = len(self.history_objects) - i
             if self.history_smooth != 0 and (i % self.history_smooth != 0):
@@ -318,6 +361,27 @@ class TopDownRenderer:
                     draw_countour=False
                 )
 
+        # Draw the whole trajectory of ego vehicle with no gradient colors:
+        if self.draw_target_vehicle_trajectory:
+            for i, v in enumerate(self.history_target_vehicle):
+                i = len(self.history_target_vehicle) - i
+                if self.history_smooth != 0 and (i % self.history_smooth != 0):
+                    continue
+                c = v.color
+                h = v.heading_theta
+                h = h if abs(h) > 2 * np.pi / 180 else 0
+                x = abs(int(i))
+                alpha_f = min(x / len(self.history_target_vehicle), 0.5)
+                # alpha_f = 0
+                VehicleGraphics.display(
+                    vehicle=v,
+                    surface=self._runtime_canvas,
+                    heading=h,
+                    color=(c[0] + alpha_f * (255 - c[0]), c[1] + alpha_f * (255 - c[1]), c[2] + alpha_f * (255 - c[2])),
+                    draw_countour=False
+                )
+
+        # Draw current vehicle with black contour
         # Use this line if you wish to draw "future" trajectory.
         # i is the index of vehicle that we will render a black box for it.
         # i = int(len(self.history_vehicles) / 2)
