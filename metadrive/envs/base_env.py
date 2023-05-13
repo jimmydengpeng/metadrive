@@ -223,14 +223,15 @@ class BaseEnv(gym.Env):
     def __init__(self, config: dict = None):
         if config is None:
             config = {}
+        self.logger = logging.getLogger(self.logger_name)
+
         merged_config = self._merge_extra_config(config)
         global_config = self._post_process_config(merged_config)
         global_config["vehicle_config"]["main_camera"] = global_config["window_size"]
 
         self.config = global_config
         initialize_global_config(self.config)
-        self.logger = logging.getLogger(self.logger_name)
-
+       
         # agent check
         self.num_agents = self.config["num_agents"]
         self.is_multi_agent = self.config["is_multi_agent"]

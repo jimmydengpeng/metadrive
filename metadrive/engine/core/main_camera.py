@@ -52,8 +52,8 @@ class MainCamera:
         self.camera_yaw = engine.global_config["camera_yaw"] if engine.global_config["camera_yaw"] is not None else None
         self.camera_heading = engine.global_config["camera_heading"] if engine.global_config["camera_heading"] is not None else None
         self.camera_smooth = engine.global_config["camera_smooth"]
-        self.camera.node().getLens().setFov(engine.global_config["camera_fov"])
-        self.camera.node().getLens().setAspectRatio(engine.global_config["camera_aspect_ratio"])
+        engine.cam.node().getLens().setFov(engine.global_config["camera_fov"])
+        engine.cam.node().getLens().setAspectRatio(engine.global_config["camera_aspect_ratio"])
         self.direction_running_mean = deque(maxlen=20 if self.camera_smooth else 1)
         self.world_light = self.engine.world_light  # light chases the chase camera, when not using global light
         self.inputs = InputState()
@@ -245,8 +245,6 @@ class MainCamera:
         else:
             self.camera.setHpr(vehicle.origin.getHpr())
             self.camera.setP(self.camera.getP() + self.camera_pitch)
-            self.camera.setH(self.camera.getH() + self.camera_heading)
-            self.camera.setR(self.camera.getR() + self.camera_yaw)
 
         if self.FOLLOW_LANE:
             self.camera.setH(

@@ -18,7 +18,6 @@ class ManualControlPolicy(EnvInputPolicy):
 
         if config["manual_control"] and config["use_render"]:
             self.engine.accept("t", self.toggle_takeover)
-            self.engine.accept("e", self.toggle_cruise_engage)
             pygame_control = False
         elif config["manual_control"]:
             # Use pygame to accept key strike.

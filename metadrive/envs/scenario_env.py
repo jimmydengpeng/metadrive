@@ -19,6 +19,7 @@ from metadrive.utils import clip
 from metadrive.utils import get_np_random
 
 SCENARIO_ENV_CONFIG = dict(
+    mouse_look=False,
     # ===== Map Config =====
     data_directory=AssetLoader.file_path("waymo", return_raw_style=False),
     start_scenario_index=0,

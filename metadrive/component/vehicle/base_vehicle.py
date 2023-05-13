@@ -135,9 +135,20 @@ class BaseVehicle(BaseObject, BaseVehicleState):
 
         # NOTE: it is the game engine, not vehicle drivetrain
         # self.engine = get_engine()
-        BaseObject.__init__(self, name, random_seed, self.engine.global_config["vehicle_config"])
+        import copy
+        global_config_clone = copy.deepcopy(self.engine.global_config["vehicle_config"])
+        if self.__class__ != BaseVehicle:
+            if "max_engine_force" in global_config_clone:
+                global_config_clone.pop("max_engine_force")
+                global_config_clone.pop("max_brake_force")
+                global_config_clone.pop("max_steering")
+                global_config_clone.pop("wheel_friction")
+        BaseObject.__init__(self, name, random_seed, global_config_clone)
         BaseVehicleState.__init__(self)
+
         self.update_config(vehicle_config)
+        print("max engine force")
+        print(self.config["max_engine_force"])
         use_special_color = self.config["use_special_color"]
 
         # build vehicle physics model
@@ -189,10 +200,10 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         # others
         self._add_modules_for_vehicle()
         self.takeover = False
-        self.expert_takeover = False
-        self.cruise_engaged = False
-        self.cruise_sp = 0
-        self.ignition = False
+        self.expert_takeover = True
+        self.cruise_engaged = True
+        self.cruise_sp = 20
+        self.ignition = True
         self.energy_consumption = 0
         self.break_down = False
 
@@ -446,8 +457,8 @@ class BaseVehicle(BaseObject, BaseVehicleState):
         # overtake_stat
         self.front_vehicles = set()
         self.back_vehicles = set()
-        self.expert_takeover = False
-        self.cruise_engaged = False
+        self.expert_takeover = True
+        self.cruise_engaged = True
         if self.config["need_navigation"]:
             assert self.navigation
 
