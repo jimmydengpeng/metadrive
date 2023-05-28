@@ -8,7 +8,11 @@ from metadrive.constants import DEFAULT_AGENT
 from metadrive.manager.base_manager import BaseManager
 from metadrive.policy.AI_protect_policy import AIProtectPolicy
 from metadrive.policy.manual_control_policy import ManualControlPolicy
-from metadrive.policy.openpilot_control_policy import OpenpilotControlPolicy
+
+try:
+    from metadrive.policy.openpilot_control_policy import OpenpilotControlPolicy
+except ImportError:
+    print("Can not import openpilot controller")
 from metadrive.policy.replay_policy import ReplayTrafficParticipantPolicy
 
 

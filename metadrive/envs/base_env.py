@@ -87,6 +87,7 @@ BASE_DEFAULT_CONFIG = dict(
         use_special_color=False,
         max_speed = 120,
         max_steering = 40,
+        no_wheel_friction=False,
 
         # ===== use image =====
         image_source="rgb_camera",  # take effect when only when image_observation == True
