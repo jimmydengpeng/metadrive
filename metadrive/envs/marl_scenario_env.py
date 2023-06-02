@@ -440,8 +440,9 @@ class MAWaymoMapManager(ScenarioMapManager):
 
     def unload_map(self, map):
         map.detach_from_world()
-        map.destroy()
-        del map
+        if not self.store_map:
+            map.destroy()
+            del map
         self.current_map = None
 
     def before_reset(self):
@@ -1548,6 +1549,8 @@ if __name__ == "__main__":
     env = MARLWaymoEnv(dict(
         # randomized_dynamics="naive",
 
+        # store_map=True,
+        
         # relax_out_of_road_done=True,
         # "save_memory": True,
         # "save_memory_max_len": 2,
