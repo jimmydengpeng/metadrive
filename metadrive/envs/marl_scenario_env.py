@@ -1,42 +1,27 @@
 import copy
-import logging
 import os.path as osp
-from collections import namedtuple
 
-from metadrive.component.pg_space import ParameterSpace, ConstantSpace, BoxSpace
-from metadrive.utils.waymo.waymo_type import WaymoAgentType
-from panda3d.core import TransparencyAttrib, LineSegs, NodePath
 from tqdm.auto import tqdm
 
 from metadrive.component.lane.point_lane import PointLane
-from metadrive.component.vehicle.base_vehicle import BaseVehicle
+from metadrive.component.pg_space import ParameterSpace, ConstantSpace, BoxSpace
 from metadrive.component.vehicle.vehicle_type import VaryingShapeVehicle
 from metadrive.component.vehicle_navigation_module.trajectory_navigation import TrajectoryNavigation
-from metadrive.constants import RENDER_MODE_ONSCREEN, CamMask
 from metadrive.constants import TerminationState, DEFAULT_AGENT
-from metadrive.engine import get_engine
-from metadrive.engine.asset_loader import AssetLoader
 from metadrive.envs.base_env import BaseEnv
 from metadrive.envs.marl_envs.multi_agent_metadrive import MultiAgentMetaDrive
+from metadrive.envs.scenario_env import ScenarioEnv
 from metadrive.manager.agent_manager import AgentManager
 from metadrive.manager.base_manager import BaseManager
-from metadrive.manager.waymo_data_manager import WaymoDataManager
 from metadrive.manager.scenario_map_manager import ScenarioMapManager
-from metadrive.manager.waymo_traffic_manager import WaymoTrafficManager
-from metadrive.policy.env_input_policy import EnvInputPolicy
-from metadrive.utils import get_np_random
-from metadrive.utils.error_class import NavigationError
-from metadrive.envs.scenario_env import ScenarioEnv, SCENARIO_ENV_CONFIG
-
+from metadrive.manager.waymo_data_manager import WaymoDataManager
+from metadrive.obs.state_obs import StateObservation, np, gym, clip, norm, LidarStateObservation
 from metadrive.policy.base_policy import BasePolicy
-
-
-from metadrive.obs.state_obs import StateObservation, NodeNetworkNavigation, np, gym, clip, norm, LidarStateObservation
-
+from metadrive.policy.env_input_policy import EnvInputPolicy
+from metadrive.utils.error_class import NavigationError
+from metadrive.utils.waymo.waymo_type import WaymoAgentType
 
 STATIC_VEHICLE_NO_ROUTE = "static_vehicle_no_route"
-
-
 
 
 class NewStateObservation(StateObservation):
@@ -124,7 +109,6 @@ class NewStateObservation(StateObservation):
         return info
 
 
-
 class NewWaymoObservation(LidarStateObservation):
     MAX_LATERAL_DIST = 20
 
@@ -155,12 +139,12 @@ class NewWaymoObservation(LidarStateObservation):
         self.lateral_dist = 0
 
 
-
 class ReplayPolicy(BasePolicy):
     """
     Replay policy from Real data. For adding new policy, overwrite get_trajectory_info()
     This policy is designed for Waymo Policy by default
     """
+
     def __init__(self, control_object, random_seed, vehicle_id):
         super(ReplayPolicy, self).__init__(control_object=control_object)
         self.vehicle_id = vehicle_id
@@ -205,7 +189,6 @@ class ReplayPolicy(BasePolicy):
         return [0, 0]
 
 
-
 def scale_from_pm1(value, min_val, max_val):
     """value in [-1, 1], output in [min_val, max_val]"""
     value = min(max(value, -1.0), 1.0)
@@ -219,7 +202,6 @@ def scale_to_pm1(value, min_val, max_val):
     value = min(max(value, min_val), max_val)
     scaled = (value - min_val) / (max_val - min_val)  # [0, 1]
     return scaled * 2 - 1
-
 
 
 def embedding_to_dynamics_parameters(embedding):
@@ -311,111 +293,6 @@ class WaymoVehicle(VaryingShapeVehicle):
 
 
 class MAWaymoTrajectoryNavigation(TrajectoryNavigation):
-    # def __init__(
-    #         self,
-    #         show_navi_mark: bool = False,
-    #         random_navi_mark_color=False,
-    #         show_dest_mark=False,
-    #         show_line_to_dest=False,
-    #         panda_color=None,
-    #         name=None,
-    #         vehicle_config=None
-    # ):
-    #     assert vehicle_config is not None
-    #
-    #     """
-    #     This class define a helper for localizing vehicles and retrieving navigation information.
-    #     It now only support from first block start to the end node, but can be extended easily.
-    #     """
-    #     # self.engine = engine
-    #     self.name = name
-    #
-    #     # Make sure these variables are filled when making new subclass
-    #     # self.map = None
-    #     # self.checkpoints = None
-    #     # self.current_ref_lanes = None
-    #     # self.next_ref_lanes = None
-    #     # self.final_lane = None
-    #     # self.current_lane = None
-    #     self.vehicle_config = vehicle_config
-    #
-    #     self._target_checkpoints_index = None
-    #     self._navi_info = np.zeros((self.get_navigation_info_dim(),), dtype=np.float32)  # navi information res
-    #
-    #     # Vis
-    #     self._show_navi_info = (
-    #             self.engine.mode == RENDER_MODE_ONSCREEN and not self.engine.global_config["debug_physics_world"])
-    #     self.origin = NodePath("navigation_sign") if self._show_navi_info else None
-    #     self.navi_mark_color = (0.6, 0.8, 0.5) if not random_navi_mark_color else get_np_random().rand(3)
-    #     if panda_color is not None:
-    #         assert len(panda_color) == 3 and 0 <= panda_color[0] <= 1
-    #         self.navi_mark_color = tuple(panda_color)
-    #     self.navi_arrow_dir = [0, 0]
-    #     self._dest_node_path = None
-    #     self._goal_node_path = None
-    #
-    #     self._node_path_list = []
-    #
-    #     self._line_to_dest = None
-    #     self._line_to_navi = None
-    #     self._show_line_to_dest = show_line_to_dest
-    #     if self._show_navi_info:
-    #         # nodepath
-    #         self._line_to_dest = self.origin.attachNewNode("line")
-    #         self._goal_node_path = self.origin.attachNewNode("target")
-    #         self._dest_node_path = self.origin.attachNewNode("dest")
-    #
-    #         self._node_path_list.append(self._line_to_dest)
-    #         self._node_path_list.append(self._goal_node_path)
-    #         self._node_path_list.append(self._dest_node_path)
-    #
-    #         if show_navi_mark:
-    #             navi_point_model = AssetLoader.loader.loadModel(AssetLoader.file_path("models", "box.bam"))
-    #             navi_point_model.reparentTo(self._goal_node_path)
-    #         if show_dest_mark:
-    #             dest_point_model = AssetLoader.loader.loadModel(AssetLoader.file_path("models", "box.bam"))
-    #             dest_point_model.reparentTo(self._dest_node_path)
-    #         if show_line_to_dest:
-    #             line_seg = LineSegs("line_to_dest")
-    #             line_seg.setColor(self.navi_mark_color[0], self.navi_mark_color[1], self.navi_mark_color[2], 1.0)
-    #             line_seg.setThickness(4)
-    #             self._dynamic_line_np = NodePath(line_seg.create(True))
-    #
-    #             self._node_path_list.append(self._dynamic_line_np)
-    #
-    #             self._dynamic_line_np.reparentTo(self.origin)
-    #             self._line_to_dest = line_seg
-    #
-    #         show_line_to_navi_mark = self.vehicle_config["show_line_to_navi_mark"]
-    #         self._show_line_to_navi_mark = show_line_to_navi_mark
-    #         if show_line_to_navi_mark:
-    #             line_seg = LineSegs("line_to_dest")
-    #             line_seg.setColor(self.navi_mark_color[0], self.navi_mark_color[1], self.navi_mark_color[2], 1.0)
-    #             line_seg.setThickness(4)
-    #             self._dynamic_line_np_2 = NodePath(line_seg.create(True))
-    #
-    #             self._node_path_list.append(self._dynamic_line_np_2)
-    #
-    #             self._dynamic_line_np_2.reparentTo(self.origin)
-    #             self._line_to_navi = line_seg
-    #
-    #         self._goal_node_path.setTransparency(TransparencyAttrib.M_alpha)
-    #         self._dest_node_path.setTransparency(TransparencyAttrib.M_alpha)
-    #
-    #         self._goal_node_path.setColor(
-    #             self.navi_mark_color[0], self.navi_mark_color[1], self.navi_mark_color[2], 0.7
-    #         )
-    #         self._dest_node_path.setColor(
-    #             self.navi_mark_color[0], self.navi_mark_color[1], self.navi_mark_color[2], 0.7
-    #         )
-    #         self._goal_node_path.hide(CamMask.AllOn)
-    #         self._dest_node_path.hide(CamMask.AllOn)
-    #         self._goal_node_path.show(CamMask.MainCam)
-    #         self._dest_node_path.show(CamMask.MainCam)
-    #     logging.debug("Load Vehicle Module: {}".format(self.__class__.__name__))
-    #
-    #     assert isinstance(self.name, str), self.name
-
     def reset(self, map=None, current_lane=None, destination=None, random_seed=None):
         # self.map = map
         # self.map = None
@@ -425,27 +302,10 @@ class MAWaymoTrajectoryNavigation(TrajectoryNavigation):
     def set_route(self, current_lane_index: str, destination: str):
         self.checkpoints = self.discretize_reference_trajectory()
         self._target_checkpoints_index = [0, 1] if len(self.checkpoints) >= 2 else [0, 0]
-        # update routing info
-        # assert len(self.checkpoints
-        #            ) >= 2, "Can not find a route from {} to {}".format(current_lane_index[0], destination)
-
         self._navi_info.fill(0.0)
-        # self.current_ref_lanes = [self.reference_trajectory]
-        # self.next_ref_lanes = None
-        # self.current_lane = self.final_lane = self.reference_trajectory
-
-        # self.current_ref_lanes = None
-        # self.next_ref_lanes = None
-        # self.current_lane = None
-        # self.final_lane = None
-
         if self._dest_node_path is not None:
             check_point = self.reference_trajectory.end
             self._dest_node_path.setPos(check_point[0], -check_point[1], 1.8)
-
-    @property
-    def engine(self):
-        return get_engine()
 
     @property
     def current_lane(self):
@@ -457,6 +317,9 @@ class MAWaymoTrajectoryNavigation(TrajectoryNavigation):
 
     @property
     def reference_trajectory(self):
+        """
+        This is different to the original trajectory_navigation as it only uses SDC track.
+        """
         agent_name = self.vehicle_config["agent_name"]
         if agent_name not in self.engine.map_manager.current_routes:
             from metadrive.utils.error_class import NavigationError
@@ -472,17 +335,6 @@ class MAWaymoTrajectoryNavigation(TrajectoryNavigation):
     def get_trajectory(self):
         """This function breaks Multi-agent Waymo Env since we don't set this in map_manager."""
         raise ValueError()
-        # agent_name = self.vehicle_config["agent_name"]
-        # if agent_name not in self.engine.map_manager.current_routes:
-        #     from metadrive.utils.error_class import NavigationError
-        #     raise NavigationError(
-        #         "{} has no record in MapManager: {}".format(agent_name, self.engine.map_manager.current_routes.keys())
-        #     )
-        # elif self.engine.map_manager.current_routes[agent_name] == STATIC_VEHICLE_NO_ROUTE:
-        #     return None
-        #
-        # # Use deepcopy to avoid circular reference
-        # return copy.deepcopy(self.engine.map_manager.current_routes[agent_name])
 
     def before_reset(self):
         # self.map = None
@@ -664,6 +516,12 @@ class MAWaymoAgentManager(AgentManager):
                                                                     "dynamics_policy"]
 
     def get_expert_trajectory(self, v_traj_id):
+        """
+        This function is useful for generating expert observation dataset.
+        But it is not verified in migration.
+        """
+        # TODO PZH Check
+        raise ValueError()
         # assert "latent_trajectory_len" in self.engine.global_config
         # assert self.engine.global_config["latent_trajectory_len"] > 0
         expert_id = v_traj_id  # Create a new variable to avoid affect "v_traj_id"
@@ -912,6 +770,7 @@ class MAWaymoAgentManager(AgentManager):
                 # )
 
                 if self.engine.global_config["replay_traffic_vehicle"] and v_traj_id != "sdc":
+                    # TODO PZH: This is not checked yet.
                     # from newcopo.metadrive_scenario.marl_envs.replay_policy import ReplayPolicy
                     self.add_policy(
                         v.id,
@@ -1030,15 +889,12 @@ class MAWaymoAgentManager(AgentManager):
             time_idx = -1
         # state = states[time_idx]
 
-
         # TODO PZH 0601: I ignore many functionality in this function for quick debugging. For example,
         #  in old code we have a interpolation mechanism to rescue tracks.
         #  We also turn heading from radians to degrees.
         return {
             k: v[time_idx] for k, v in states.items()
         }
-
-
 
         if check_last_state:
             raise ValueError()
@@ -1086,7 +942,8 @@ class MAWaymoAgentManager(AgentManager):
         ret["position"] = [state[0], state[1]]
         ret["length"] = state[3]
         ret["width"] = state[4]
-        ret["heading"] = np.rad2deg(state[6])  # TODO PZH: It seems that my old code use degree as heading????? NEED CHECK!!
+        ret["heading"] = np.rad2deg(
+            state[6])  # TODO PZH: It seems that my old code use degree as heading????? NEED CHECK!!
         ret["velocity"] = [state[7], state[8]]
 
         return ret
@@ -1206,7 +1063,7 @@ class MAWaymoAgentManager(AgentManager):
 
 WAYMO_DATASET_PATH = osp.join(osp.dirname(osp.dirname(osp.realpath(__file__))), "dataset", "env_num_1165_waymo")
 
-MARL_SINGLE_WAYMO_ENV_CONFIG = {
+MARL_SCENARIO_ENV_CONFIG = {
     # "data_directory": None,
     "num_agents": -1,  # Automatically determine how many agents
     # "start_case_index": 551,  # ===== Set the scene to 551 =====
@@ -1248,6 +1105,7 @@ MARL_SINGLE_WAYMO_ENV_CONFIG = {
 
 }
 
+
 def _get_action(value, max_value):
     """Transform a discrete value: [0, max_value) into a continuous value [-1, 1]"""
     action = value / (max_value - 1)
@@ -1271,7 +1129,7 @@ class MARLWaymoEnv(ScenarioEnv, MultiAgentMetaDrive):
     @classmethod
     def default_config(cls):
         config = super(MARLWaymoEnv, cls).default_config()
-        config.update(MARL_SINGLE_WAYMO_ENV_CONFIG)
+        config.update(MARL_SCENARIO_ENV_CONFIG)
         config.register_type("randomized_dynamics", None, str)
         return config
 
@@ -1350,6 +1208,7 @@ class MARLWaymoEnv(ScenarioEnv, MultiAgentMetaDrive):
 
         if self.config["randomized_dynamics"] == "naive":
             raise ValueError()  # TODO PZH
+
             def _d(environment_seed=None, agent_name=None, latent_dict=None):
                 s = np.random.randint(3)
                 if s == 0:
@@ -1526,7 +1385,6 @@ class MARLWaymoEnv(ScenarioEnv, MultiAgentMetaDrive):
 
     def _get_action_space(self):
         if self._waymo_discrete_action:
-            from gym.spaces import Discrete
             discrete_action_dim = self.config["discrete_action_dim"]
             raise ValueError()  # TODO PZH
             return {self.DEFAULT_AGENT: Discrete(discrete_action_dim * discrete_action_dim)}
@@ -1643,7 +1501,6 @@ class MARLWaymoEnv(ScenarioEnv, MultiAgentMetaDrive):
 
         return reward, step_info
 
-
     def _is_arrive_destination(self, vehicle):
         long, lat = vehicle.navigation.reference_trajectory.local_coordinates(vehicle.position)
 
@@ -1706,6 +1563,8 @@ if __name__ == "__main__":
             o, r, d, i = env.step({key: [1, 1] for key in env.vehicles.keys()})
 
             assert env.observation_space.contains(o)
+
+            env.render("topdown")
 
             # o, r, d, i = env.step(env.action_space.sample())
 
