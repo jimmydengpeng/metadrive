@@ -744,7 +744,7 @@ class MAWaymoAgentManager(AgentManager):
                 continue
 
             # We set the height to 0.8 for no reason. It just a randomly picked number.
-            # v.set_position(v.position, height=0.8)
+            v.set_position(v.position, height=0.8)
 
             if data["static"] or \
                     (v.navigation is None) or \
@@ -1537,7 +1537,7 @@ if __name__ == "__main__":
     # tmp_folder = video_name + ".TMP"
     # os.makedirs(tmp_folder, exist_ok=True)
     env = MARLWaymoEnv(dict(
-        # use_render=True,
+        use_render=True,
         # randomized_dynamics="naive",
         # store_map=True,
         # relax_out_of_road_done=True,
