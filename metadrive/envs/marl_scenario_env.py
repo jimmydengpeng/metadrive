@@ -527,7 +527,7 @@ class MAWaymoAgentManager(AgentManager):
         # assert self.engine.global_config["latent_trajectory_len"] > 0
         expert_id = v_traj_id  # Create a new variable to avoid affect "v_traj_id"
         if expert_id == "sdc":
-            expert_id = self.current_traffic_data["sdc_index"]
+            expert_id = self.current_traffic_data["metadata"]["sdc_id"]
         this_track = self.current_traffic_data["tracks"][expert_id]['state']
         expert_traj = process_expert_trajectory(this_track)
         return expert_traj
@@ -736,15 +736,6 @@ class MAWaymoAgentManager(AgentManager):
                 if self.engine.global_config["randomized_dynamics"] == "naive" and self.dynamics_function is not None:
                     v._dynamics_mode = info["mode"]
 
-                # print("Vehicle is reset: {}. dynamics_dict: {}".format(v.get_dynamics_parameters(), dynamics_dict))
-
-                # print("Current vehicle shape: {}, Should be: {}".format(
-                #     (
-                #         list(v.system.chassis.shapes)[0].half_extents_with_margin[0] * 2,
-                #         list(v.system.chassis.shapes)[0].half_extents_with_margin[1] * 2),
-                #     (width, length)
-                # ))
-
             except NavigationError:
                 print(
                     "Vehicle {} can not find navigation. Maybe it is out of the road. It's init states are: ".
@@ -753,7 +744,7 @@ class MAWaymoAgentManager(AgentManager):
                 continue
 
             # We set the height to 0.8 for no reason. It just a randomly picked number.
-            v.set_position(v.position, height=0.8)
+            # v.set_position(v.position, height=0.8)
 
             if data["static"] or \
                     (v.navigation is None) or \
@@ -893,59 +884,58 @@ class MAWaymoAgentManager(AgentManager):
         # TODO PZH 0601: I ignore many functionality in this function for quick debugging. For example,
         #  in old code we have a interpolation mechanism to rescue tracks.
         #  We also turn heading from radians to degrees.
-        return {
-            k: v[time_idx] for k, v in states.items()
-        }
+        # return {
+        #     k: v[time_idx] for k, v in states.items()
+        # }
 
         if check_last_state:
-            raise ValueError()
-
-            # index = len(states)
-            # dist = np.linalg.norm(states["position"][:-1, :2] - states["position"][1:, :2], axis=1)
-            # for i in range(len(dist)):
-            #     if dist[i] > 100:
-            #         index = i
-            #         break
-
-            for current_idx in range(len(states) - 1):
-                p_1 = states[current_idx][:2]
-                p_2 = states[current_idx + 1][:2]
-                if np.linalg.norm(p_1 - p_2) > 100:
-                    state = states[current_idx]
+            dist = np.linalg.norm(states["position"][:-1, :2] - states["position"][1:, :2], axis=1)
+            for i in range(len(dist)):
+                if dist[i] > 100:
+                    time_idx = i
                     break
 
         # Little fix: If a vehicle disappear for future 10 frames, then we set it to invalid.
         # Instead of using "invalid" flag from Waymo dataset directly:
         # ret["valid"] = state[9]
         if time_idx != -1:
-            valid = states[time_idx: time_idx + 10, 9].max()
+            valid = states["valid"][time_idx: time_idx + 10].max()
         else:
-            valid = state[9]
+            valid = states["valid"][time_idx]
 
-        if valid != state[9]:
-            # This frame is lost, we should interpolate values:
-
-            search_states = states[max(time_idx - 5, 0): min(time_idx + 5, len(states))]
-
-            # Interpolation
-            fail = True
-            if len(search_states) != 0:
-                search_valid_mask = search_states[:, 9].astype(bool)
-                if search_valid_mask.mean() > 0:
-                    state = search_states[search_valid_mask].mean(axis=0)
-                    fail = False
-
-            if fail:
-                valid = False
+        # TODO PZH 0603: We ignore the interpolation here.
+        # if valid != states["valid"][time_idx]:
+        #     # This frame is lost, we should interpolate values:
+        #
+        #     search_states = states[max(time_idx - 5, 0): min(time_idx + 5, len(states))]
+        #
+        #     # Interpolation
+        #     fail = True
+        #     if len(search_states) != 0:
+        #         search_valid_mask = search_states[:, 9].astype(bool)
+        #         if search_valid_mask.mean() > 0:
+        #             state = search_states[search_valid_mask].mean(axis=0)
+        #             fail = False
+        #
+        #     if fail:
+        #         valid = False
 
         ret["valid"] = valid
         # ret["position"] = waymo_2_metadrive_position([state[0], state[1]])
-        ret["position"] = [state[0], state[1]]
-        ret["length"] = state[3]
-        ret["width"] = state[4]
-        ret["heading"] = np.rad2deg(
-            state[6])  # TODO PZH: It seems that my old code use degree as heading????? NEED CHECK!!
-        ret["velocity"] = [state[7], state[8]]
+        ret["position"] = states["position"][time_idx]
+        ret["length"] = states["length"][time_idx]
+        ret["width"] = states["width"][time_idx]
+
+        # TODO: PZH 0603 check this!!!
+        # TODO: PZH 0603 check this!!!
+        # TODO: PZH 0603 check this!!!
+        # TODO: PZH 0603 check this!!!
+        # TODO: PZH 0603 check this!!!
+        # ret["heading"] = np.rad2deg(state[6])  # TODO PZH: It seems that my old code use degree as heading????? NEED CHECK!!
+
+        ret["heading"] = states["heading"][time_idx]
+
+        ret["velocity"] = states["velocity"][time_idx]
 
         return ret
 
@@ -982,15 +972,15 @@ class MAWaymoAgentManager(AgentManager):
         # TODO: Current implementation does not consider the case when the car is start at a few frame later.
         #  That is, in the first few frames, the car is located at [0, 0] but later suddenly has new positions.
 
-        index = len(states)
+        index = len(states["position"])
         dist = np.linalg.norm(states["position"][:-1, :2] - states["position"][1:, :2], axis=1)
         for i in range(len(dist)):
             if dist[i] > 100:
                 index = i
                 break
 
-        states = {k: v[:index] for k, v in states.items()}
-        trajectory = copy.deepcopy(states["position"][:, :2])
+        # states = {k: v[:index] for k, v in states.items()}
+        trajectory = copy.deepcopy(states["position"][:index, :2])
 
         # TODO: PZH, check. we now remove the converting.
         # convert to metadrive coordinate
@@ -1457,7 +1447,7 @@ class MARLWaymoEnv(ScenarioEnv, MultiAgentMetaDrive):
         data = self.engine.data_manager.get_scenario(self.engine.global_seed)
         agent_xy = vehicle.position
         if vehicle_id == "sdc":
-            native_vid = data["sdc_index"]
+            native_vid = data[data.METADATA]["sdc_id"]
         else:
             native_vid = vehicle_id
 
@@ -1547,10 +1537,9 @@ if __name__ == "__main__":
     # tmp_folder = video_name + ".TMP"
     # os.makedirs(tmp_folder, exist_ok=True)
     env = MARLWaymoEnv(dict(
+        # use_render=True,
         # randomized_dynamics="naive",
-
         # store_map=True,
-        
         # relax_out_of_road_done=True,
         # "save_memory": True,
         # "save_memory_max_len": 2,
