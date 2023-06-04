@@ -592,7 +592,11 @@ class MAWaymoAgentManager(AgentManager):
                         full_traj = self.parse_full_trajectory(type_traj["state"])
                         if len(full_traj) < self.MIN_DURATION:
                             # full_traj = static_vehicle_info(init_info["position"], init_info["heading"])
-                            static = True
+
+                            # PZH 0604: Lack of necessary information, discard the car instead of assuming it is static.
+                            # static = True
+                            continue
+
                         else:
                             # full_traj = WayPointLane(full_traj, width=self.TRAJ_WIDTH)
                             static = False
@@ -1552,7 +1556,7 @@ if __name__ == "__main__":
         # env.reset(force_seed=ep)
         env.reset()
         for t in tqdm(range(1000), desc="Step"):
-            o, r, d, i = env.step({key: [1, 1] for key in env.vehicles.keys()})
+            o, r, d, i = env.step({key: [0, 1] for key in env.vehicles.keys()})
 
             assert env.observation_space.contains(o)
 
