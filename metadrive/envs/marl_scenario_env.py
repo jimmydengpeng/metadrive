@@ -24,6 +24,59 @@ from metadrive.utils.waymo.waymo_type import WaymoAgentType
 STATIC_VEHICLE_NO_ROUTE = "static_vehicle_no_route"
 
 
+def parse_vehicle_state(states, time_idx, check_last_state=False, use_2d_position=True):
+    ret = {}
+    if time_idx >= len(states):
+        time_idx = -1
+
+    if check_last_state:
+        dist = np.linalg.norm(states["position"][:-1, :2] - states["position"][1:, :2], axis=1)
+        for i in range(len(dist)):
+            if dist[i] > 100:
+                time_idx = i
+                break
+
+    # Little fix: If a vehicle disappear for future 10 frames, then we set it to invalid.
+    # Instead of using "invalid" flag from Waymo dataset directly:
+    # ret["valid"] = state[9]
+    if time_idx != -1:
+        valid = states["valid"][time_idx: time_idx + 10].max()
+    else:
+        valid = states["valid"][time_idx]
+
+    # TODO PZH 0603: We ignore the interpolation here.
+    # if valid != states["valid"][time_idx]:
+    #     # This frame is lost, we should interpolate values:
+    #
+    #     search_states = states[max(time_idx - 5, 0): min(time_idx + 5, len(states))]
+    #
+    #     # Interpolation
+    #     fail = True
+    #     if len(search_states) != 0:
+    #         search_valid_mask = search_states[:, 9].astype(bool)
+    #         if search_valid_mask.mean() > 0:
+    #             state = search_states[search_valid_mask].mean(axis=0)
+    #             fail = False
+    #
+    #     if fail:
+    #         valid = False
+
+    ret["valid"] = valid
+
+    # ret["position"] = waymo_2_metadrive_position([state[0], state[1]])
+    ret["position"] = states["position"][time_idx]
+    if use_2d_position:
+        ret["position"] = ret["position"][..., :2]
+
+    ret["length"] = states["length"][time_idx]
+    ret["width"] = states["width"][time_idx]
+
+    ret["heading"] = states["heading"][time_idx]
+
+    ret["velocity"] = states["velocity"][time_idx]
+
+    return ret
+
 class NewStateObservation(StateObservation):
     ego_state_obs_dim = 11
 
@@ -149,22 +202,13 @@ class ReplayPolicy(BasePolicy):
         super(ReplayPolicy, self).__init__(control_object=control_object)
         self.vehicle_id = vehicle_id
         self.traj_info = self.get_trajectory_info()
-        self.start_index = 0
-        self.init_pos = self.traj_info[0]["position"]
-        self.heading = self.traj_info[0]["heading"]
         self.timestep = 0
         self.damp = 0
-        # how many times the replay data is slowed down
         self.damp_interval = 1
-        # self.control_object.disable_gravity()
 
     def get_trajectory_info(self):
-        from metadrive.manager.waymo_traffic_manager import WaymoTrafficManager
         trajectory_data = self.engine.data_manager.get_scenario(self.engine.global_random_seed)["tracks"]
-        return [
-            WaymoTrafficManager.parse_vehicle_state(trajectory_data[self.vehicle_id]["state"], i)
-            for i in range(len(trajectory_data[self.vehicle_id]["state"]))
-        ]
+        return trajectory_data[self.vehicle_id]["state"]
 
     def act(self, *args, **kwargs):
         self.damp += self.damp_interval
@@ -174,17 +218,13 @@ class ReplayPolicy(BasePolicy):
         else:
             return [0, 0]
 
-        if self.timestep == self.start_index:
-            self.control_object.set_position(self.init_pos)
-        elif self.timestep < len(self.traj_info):
-            self.control_object.set_position(self.traj_info[int(self.timestep)]["position"])
-            self.control_object.set_velocity(self.traj_info[int(self.timestep)]["velocity"])
+        if self.traj_info["valid"][self.timestep]:
+            self.control_object.set_position(self.traj_info["position"][self.timestep][:2])
+            self.control_object.set_velocity(self.traj_info["velocity"][self.timestep])
+            self.control_object.set_heading_theta(self.traj_info["heading"][self.timestep], in_rad=True)
 
-        if self.heading is None or self.timestep >= len(self.traj_info):
-            pass
         else:
-            this_heading = self.traj_info[int(self.timestep)]["heading"]
-            self.control_object.set_heading_theta(this_heading, rad_to_degree=False)
+            print("Current frame is not valid. ", self.vehicle_id, self.timestep)
 
         return [0, 0]
 
@@ -577,10 +617,10 @@ class MAWaymoAgentManager(AgentManager):
             for v_id, type_traj in self.current_traffic_data["tracks"].items():
                 if type_traj["type"] == WaymoAgentType.from_waymo(WaymoAgentType.VEHICLE) and \
                         v_id != self.current_traffic_data["metadata"]["sdc_id"]:
-                    init_info = self.parse_vehicle_state(
+                    init_info = parse_vehicle_state(
                         type_traj["state"], self.engine.global_config["traj_start_index"]
                     )
-                    dest_info = self.parse_vehicle_state(
+                    dest_info = parse_vehicle_state(
                         type_traj["state"], self.engine.global_config["traj_end_index"], check_last_state=True
                     )
                     if not init_info["valid"]:
@@ -611,7 +651,7 @@ class MAWaymoAgentManager(AgentManager):
                 elif type_traj["type"] == WaymoAgentType.from_waymo(WaymoAgentType.VEHICLE) and \
                         v_id == self.current_traffic_data["metadata"]["sdc_id"]:
                     # set Ego V velocity
-                    init_info = self.parse_vehicle_state(
+                    init_info = parse_vehicle_state(
                         type_traj["state"], self.engine.global_config["traj_start_index"]
                     )
                     traffic_traj_data["sdc"] = {
@@ -878,71 +918,6 @@ class MAWaymoAgentManager(AgentManager):
     def after_reset(self):
         pass
 
-    @staticmethod
-    def parse_vehicle_state(states, time_idx, check_last_state=False):
-        ret = {}
-        if time_idx >= len(states):
-            time_idx = -1
-        # state = states[time_idx]
-
-        # TODO PZH 0601: I ignore many functionality in this function for quick debugging. For example,
-        #  in old code we have a interpolation mechanism to rescue tracks.
-        #  We also turn heading from radians to degrees.
-        # return {
-        #     k: v[time_idx] for k, v in states.items()
-        # }
-
-        if check_last_state:
-            dist = np.linalg.norm(states["position"][:-1, :2] - states["position"][1:, :2], axis=1)
-            for i in range(len(dist)):
-                if dist[i] > 100:
-                    time_idx = i
-                    break
-
-        # Little fix: If a vehicle disappear for future 10 frames, then we set it to invalid.
-        # Instead of using "invalid" flag from Waymo dataset directly:
-        # ret["valid"] = state[9]
-        if time_idx != -1:
-            valid = states["valid"][time_idx: time_idx + 10].max()
-        else:
-            valid = states["valid"][time_idx]
-
-        # TODO PZH 0603: We ignore the interpolation here.
-        # if valid != states["valid"][time_idx]:
-        #     # This frame is lost, we should interpolate values:
-        #
-        #     search_states = states[max(time_idx - 5, 0): min(time_idx + 5, len(states))]
-        #
-        #     # Interpolation
-        #     fail = True
-        #     if len(search_states) != 0:
-        #         search_valid_mask = search_states[:, 9].astype(bool)
-        #         if search_valid_mask.mean() > 0:
-        #             state = search_states[search_valid_mask].mean(axis=0)
-        #             fail = False
-        #
-        #     if fail:
-        #         valid = False
-
-        ret["valid"] = valid
-        # ret["position"] = waymo_2_metadrive_position([state[0], state[1]])
-        ret["position"] = states["position"][time_idx]
-        ret["length"] = states["length"][time_idx]
-        ret["width"] = states["width"][time_idx]
-
-        # TODO: PZH 0603 check this!!!
-        # TODO: PZH 0603 check this!!!
-        # TODO: PZH 0603 check this!!!
-        # TODO: PZH 0603 check this!!!
-        # TODO: PZH 0603 check this!!!
-        # ret["heading"] = np.rad2deg(state[6])  # TODO PZH: It seems that my old code use degree as heading????? NEED CHECK!!
-
-        ret["heading"] = states["heading"][time_idx]
-
-        ret["velocity"] = states["velocity"][time_idx]
-
-        return ret
-
     def after_step(self, *args, **kwargs):
         step_infos = self.for_each_active_agents(lambda v: v.after_step())
         return step_infos
@@ -1015,14 +990,16 @@ class MAWaymoAgentManager(AgentManager):
 
             if v_id == "sdc":
                 assert self.current_traffic_data["metadata"]["sdc_id"] in tracks
-                info = self.parse_vehicle_state(tracks[self.current_traffic_data["sdc_index"]]["state"],
-                                                time_idx=time_step)
+                info = parse_vehicle_state(
+                    tracks[self.current_traffic_data["sdc_index"]]["state"],
+                    time_idx=time_step
+                )
 
             else:
                 if v_id not in tracks:
                     print("Vehicle {} not in logged data".format(v_id))
                     continue
-                info = self.parse_vehicle_state(tracks[v_id]["state"], time_idx=time_step)
+                info = parse_vehicle_state(tracks[v_id]["state"], time_idx=time_step)
 
             time_end = time_step > self.engine.global_config["traj_end_index"] and self.engine.global_config[
                 "traj_end_index"] != -1
@@ -1039,7 +1016,7 @@ class MAWaymoAgentManager(AgentManager):
             # (the default argument of "set_position" function)
             v.set_position(info["position"], 0.4)
 
-            v.set_heading_theta(info["heading"], rad_to_degree=False)
+            v.set_heading_theta(info["heading"], in_rad=True)
             v.set_velocity(info['velocity'])
 
         # Unknown issue in the engine that we have to do a little simulation so that the "set_position" can become
@@ -1542,6 +1519,8 @@ if __name__ == "__main__":
     # os.makedirs(tmp_folder, exist_ok=True)
     env = MARLWaymoEnv(dict(
         use_render=True,
+
+        replay_traffic_vehicle=True,
         # randomized_dynamics="naive",
         # store_map=True,
         # relax_out_of_road_done=True,
@@ -1556,7 +1535,7 @@ if __name__ == "__main__":
         # env.reset(force_seed=ep)
         env.reset()
         for t in tqdm(range(1000), desc="Step"):
-            o, r, d, i = env.step({key: [0, 1] for key in env.vehicles.keys()})
+            o, r, d, i = env.step({key: [0, 0] for key in env.vehicles.keys()})
 
             assert env.observation_space.contains(o)
 
