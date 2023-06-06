@@ -13,7 +13,7 @@ class DefaultVehicle(BaseVehicle):
     LATERAL_TIRE_TO_CENTER = 0.815
     FRONT_WHEELBASE = 1.05234
     REAR_WHEELBASE = 1.4166
-    path = ['vehicle/ferra/vehicle.gltf', (1, 1, 1), (0, 0.075, 0.), (0, 0, 0)]
+    path = ['ferra/vehicle.gltf', (1, 1, 1), (0, 0.075, 0.), (0, 0, 0)]
 
     @property
     def LENGTH(self):
@@ -53,7 +53,7 @@ class XLVehicle(BaseVehicle):
     TIRE_WIDTH = 0.5
     MASS = 1600
     LIGHT_POSITION = (-0.75, 2.7, 0.2)
-    path = ['vehicle/truck/vehicle.gltf', (1, 1, 1), (0, 0.25, 0.04), (0, 0, 0)]
+    path = ['truck/vehicle.gltf', (1, 1, 1), (0, 0.25, 0.04), (0, 0, 0)]
 
     @property
     def LENGTH(self):
@@ -81,7 +81,7 @@ class LVehicle(BaseVehicle):
     MASS = 1300
     LIGHT_POSITION = (-0.65, 2.13, 0.3)
 
-    path = ['vehicle/lada/vehicle.gltf', (1.1, 1.1, 1.1), (0, -0.27, 0.07), (0, 0, 0)]
+    path = ['lada/vehicle.gltf', (1.1, 1.1, 1.1), (0, -0.27, 0.07), (0, 0, 0)]
 
     @property
     def LENGTH(self):
@@ -109,7 +109,7 @@ class MVehicle(BaseVehicle):
     MASS = 1200
     LIGHT_POSITION = (-0.67, 1.86, 0.22)
 
-    path = ['vehicle/130/vehicle.gltf', (1, 1, 1), (0, -0.05, 0.1), (0, 0, 0)]
+    path = ['130/vehicle.gltf', (1, 1, 1), (0, -0.05, 0.1), (0, 0, 0)]
 
     @property
     def LENGTH(self):
@@ -142,11 +142,11 @@ class SVehicle(BaseVehicle):
     def path(self):
         if self.use_render_pipeline:
             return [
-                'vehicle/beetle/vehicle.bam', (0.0077, 0.0077, 0.0077), (0.04512, -0.24 - 0.04512, 1.77), (-90, -90, 0)
+                'beetle/vehicle.bam', (0.0077, 0.0077, 0.0077), (0.04512, -0.24 - 0.04512, 1.77), (-90, -90, 0)
             ]
         else:
             factor = 1
-            return ['vehicle/beetle/vehicle.gltf', (factor, factor, factor), (0, -0.2, 0.03), (0, 0, 0)]
+            return ['beetle/vehicle.gltf', (factor, factor, factor), (0, -0.2, 0.03), (0, 0, 0)]
 
     @property
     def LENGTH(self):
