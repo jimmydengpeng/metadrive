@@ -10,8 +10,8 @@ from metadrive.component.road_network import Road
 from metadrive.component.road_network.node_road_network import NodeRoadNetwork
 from metadrive.component.vehicle_navigation_module.base_navigation import BaseNavigation
 from metadrive.utils import clip, norm, get_np_random
-from metadrive.utils.math_utils import panda_vector
-from metadrive.utils.pg_utils.utils import ray_localization
+from metadrive.utils.math import panda_vector
+from metadrive.utils.pg.utils import ray_localization
 
 
 class NodeNetworkNavigation(BaseNavigation):
@@ -234,7 +234,7 @@ class NodeNetworkNavigation(BaseNavigation):
         if dir_norm > self.NAVI_POINT_DIST:  # if the checkpoint is too far then crop the direction vector
             dir_vec = dir_vec / dir_norm * self.NAVI_POINT_DIST
         ckpt_in_heading, ckpt_in_rhs = ego_vehicle.convert_to_local_coordinates(
-            dir_vec
+            dir_vec, 0.0
         )  # project to ego vehicle's coordination
 
         # Dim 1: the relative position of the checkpoint in the target vehicle's heading direction.

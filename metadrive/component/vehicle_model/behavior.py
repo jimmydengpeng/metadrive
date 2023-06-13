@@ -4,11 +4,10 @@ import numpy as np
 from metadrive.component.vehicle_model.controller import ControlledVehicle
 from metadrive.component.vehicle_model.kinematics import Vehicle
 
-import metadrive.utils.math_utils as utils
-from metadrive.component.static_object.base_static_object import BaseStaticObject
+import metadrive.utils.math as utils
 from metadrive.constants import Route, LaneIndex
 from metadrive.manager.traffic_manager import PGTrafficManager
-from metadrive.utils.math_utils import clip
+from metadrive.utils.math import clip
 
 
 class IDMVehicle(ControlledVehicle):

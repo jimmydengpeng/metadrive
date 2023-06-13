@@ -1,11 +1,8 @@
 import copy
 import logging
-from metadrive.utils import random_string
-from metadrive.utils.math_utils import wrap_to_pi
-
 import math
 from typing import Dict
-from metadrive.engine.physics_node import BaseRigidBodyNode, BaseGhostBodyNode
+
 import numpy as np
 import seaborn as sns
 from panda3d.bullet import BulletWorld, BulletBodyNode
@@ -18,9 +15,11 @@ from metadrive.engine.core.physics_world import PhysicsWorld
 from metadrive.engine.physics_node import BaseRigidBodyNode, BaseGhostBodyNode
 from metadrive.utils import Vector
 from metadrive.utils import get_np_random
-from metadrive.utils.coordinates_shift import panda_vector, metadrive_vector, panda_heading, metadrive_heading
-from metadrive.utils.math_utils import clip
-from metadrive.utils.math_utils import norm
+from metadrive.utils import random_string
+from metadrive.utils.coordinates_shift import panda_vector, metadrive_vector, panda_heading
+from metadrive.utils.math import clip
+from metadrive.utils.math import norm
+from metadrive.utils.math import wrap_to_pi
 
 logger = logging.getLogger(__name__)
 
@@ -292,10 +291,7 @@ class BaseObject(BaseRunnable):
         :param in_local_frame: True, apply speed to local fram
         """
         if in_local_frame:
-            from metadrive.engine.engine_utils import get_engine
-            engine = get_engine()
-            direction = LVector3(*direction, 0.)
-            direction = engine.worldNP.getRelativeVector(self.origin, direction)
+            direction = self.convert_to_world_coordinates(direction, [0, 0])
 
         if value is not None:
             norm_ratio = value / (norm(direction[0], direction[1]) + 1e-6)
@@ -379,22 +375,26 @@ class BaseObject(BaseRunnable):
     @property
     def roll(self):
         """
-        Return the roll of this object
+        Return the roll of this object. As it is facing to x, so roll is pitch
         """
-        return np.deg2rad(self.origin.getR())
+        return np.deg2rad(self.origin.getP())
 
     def set_roll(self, roll):
-        self.origin.setR(roll)
+        """
+        As it is facing to x, so roll is pitch
+        """
+        self.origin.setP(roll)
 
     @property
     def pitch(self):
         """
-        Return the pitch of this object
+        Return the pitch of this object, as it is facing to x, so pitch is roll
         """
-        return np.deg2rad(self.origin.getP())
+        return np.deg2rad(self.origin.getR())
 
     def set_pitch(self, pitch):
-        self.origin.setP(pitch)
+        """As it is facing to x, so pitch is roll"""
+        self.origin.setR(pitch)
 
     def set_static(self, flag):
         self.body.setStatic(flag)
@@ -463,24 +463,57 @@ class BaseObject(BaseRunnable):
     def random_rename(self):
         self.rename(random_string())
 
-    def convert_to_local_coordinates(self, vector):
+    def convert_to_local_coordinates(self, vector, origin):
         """
-        Give a world position, and convert it to object coordinates
-        TODO(LQY): add test
+        Give vector in world coordinates, and convert it to object coordinates. For example, vector can be other vehicle
+        position, origin could be this vehicles position. In this case, vector-origin will be transformed to ego car
+        coordinates. If origin is set to 0, then no offset is applied and this API only calculates relative direction.
+
+        In a word, for calculating **points transformation** in different coordinates, origin is required. This is
+        because vectors have no origin but origin is required to define a point.
         """
+        vector = np.asarray(vector) - np.asarray(origin)
         vector = LVector3(*vector, 0.)
         vector = self.origin.getRelativeVector(self.engine.origin, vector)
         project_on_x = vector[0]
         project_on_y = vector[1]
         return np.array([project_on_x, project_on_y])
 
-    def convert_to_world_coordinates(self, vector):
+    def convert_to_world_coordinates(self, vector, origin):
         """
-        Give a position in world coordinates, and convert it to object coordinates
-        TODO(LQY): add test
+        Give a vector in local coordinates, and convert it to world coordinates. The origin should be added as offset.
+        For example, vector could be a relative position in local coordinates and origin could be ego car's position.
+        If origin is set to 0, then no offset is applied and this API only calculates relative direction.
+
+        In a word, for calculating **points transformation** in different coordinates, origin is required. This is
+        because vectors have no origin but origin is required to define a point.
         """
         vector = LVector3(*vector, 0.)
         vector = self.engine.origin.getRelativeVector(self.origin, vector)
         project_on_x = vector[0]
         project_on_y = vector[1]
-        return np.array([project_on_x, project_on_y])
+        return np.array([project_on_x, project_on_y]) + np.asarray(origin)
+
+    @property
+    def WIDTH(self):
+        raise NotImplementedError()
+
+    @property
+    def LENGTH(self):
+        raise NotImplementedError()
+
+    @property
+    def bounding_box(self):
+        """
+        This function will return the 2D bounding box of vehicle. Points are in clockwise sequence, first point is the
+        top-left point.
+        """
+        p1 = self.convert_to_world_coordinates([self.LENGTH / 2, self.WIDTH / 2], self.position)
+        p2 = self.convert_to_world_coordinates([self.LENGTH / 2, -self.WIDTH / 2], self.position)
+        p3 = self.convert_to_world_coordinates([-self.LENGTH / 2, -self.WIDTH / 2], self.position)
+        p4 = self.convert_to_world_coordinates([-self.LENGTH / 2, self.WIDTH / 2], self.position)
+        return [p1, p2, p3, p4]
+
+    @property
+    def use_render_pipeline(self):
+        return self.engine is not None and self.engine.use_render_pipeline

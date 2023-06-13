@@ -5,8 +5,8 @@ from typing import List
 
 from metadrive.component.road_network.base_road_network import BaseRoadNetwork
 from metadrive.component.road_network.base_road_network import LaneIndex
-from metadrive.utils.math_utils import get_boxes_bounding_box
-from metadrive.utils.pg_utils.utils import get_lanes_bounding_box
+from metadrive.utils.math import get_boxes_bounding_box
+from metadrive.utils.pg.utils import get_lanes_bounding_box
 
 lane_info = namedtuple("neighbor_lanes", "lane entry_lanes exit_lanes left_lanes right_lanes")
 
@@ -106,10 +106,20 @@ class EdgeRoadNetwork(BaseRoadNetwork):
             assert id == lane_info.lane.index
             ret[id] = {
                 SD.POLYLINE: lane_info.lane.get_polyline(interval),
-                SD.POLYGON: lane_info.lane.get_polygon(),
+                SD.POLYGON: lane_info.lane.polygon,
                 SD.TYPE: MetaDriveType.LANE_SURFACE_STREET,
                 "speed_limit_kmh": lane_info.lane.speed_limit
             }
+        return ret
+
+    def get_all_lanes(self):
+        """
+        This function will return all lanes in the road network
+        :return: list of lanes
+        """
+        ret = []
+        for id, lane_info in self.graph.items():
+            ret.append(lane_info.lane)
         return ret
 
 

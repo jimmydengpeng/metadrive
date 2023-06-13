@@ -1,12 +1,14 @@
 import copy
-import numpy as np
 import datetime
 import logging
 import os
 import sys
+import time
 
 import numpy as np
 from panda3d.bullet import BulletBodyNode
+
+from metadrive.constants import MetaDriveType
 
 
 def import_pygame():
@@ -180,11 +182,13 @@ def get_object_from_node(node: BulletBodyNode):
     if node.getPythonTag(node.getName()) is None:
         return None
     from metadrive.engine.engine_utils import get_object
+    from metadrive.engine.engine_utils import get_engine
     ret = node.getPythonTag(node.getName()).base_object_name
-    if isinstance(ret, str):
-        return get_object(ret)[ret]
+    is_road = node.getPythonTag(node.getName()).type_name == MetaDriveType.LANE_SURFACE_STREET
+    if is_road:
+        return get_engine().current_map.road_network.get_lane(ret)
     else:
-        return ret
+        return get_object(ret)[ret]
 
 
 def is_map_related_instance(obj):
@@ -197,3 +201,22 @@ def is_map_related_class(object_class):
     from metadrive.component.block.base_block import BaseBlock
     from metadrive.component.map.base_map import BaseMap
     return True if issubclass(object_class, BaseBlock) or issubclass(object_class, BaseMap) else False
+
+
+def dict_recursive_remove_array(d):
+    if isinstance(d, np.ndarray):
+        return d.tolist()
+    if isinstance(d, dict):
+        for k in d.keys():
+            d[k] = dict_recursive_remove_array(d[k])
+    return d
+
+
+def time_me(fn):
+    def _wrapper(*args, **kwargs):
+        start = time.time()
+        ret = fn(*args, **kwargs)
+        print("function: %s cost %s second" % (fn.__name__, time.time() - start))
+        return ret
+
+    return _wrapper

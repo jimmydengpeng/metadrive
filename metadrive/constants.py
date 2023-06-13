@@ -1,9 +1,10 @@
+import math
 from typing import List, Tuple
 
-import math
 from panda3d.bullet import BulletWorld
 from panda3d.core import Vec3
 from panda3d.core import Vec4, BitMask32
+
 from metadrive.type import MetaDriveType
 
 EDITION = "MetaDrive v0.3.0.1"
@@ -64,6 +65,8 @@ COLOR = {
     MetaDriveType.VEHICLE: "red",
     MetaDriveType.GROUND: "yellow",
     MetaDriveType.TRAFFIC_OBJECT: "yellow",
+    MetaDriveType.TRAFFIC_CONE: "yellow",
+    MetaDriveType.TRAFFIC_BARRIER: "yellow",
     MetaDriveType.PEDESTRIAN: "red",
     MetaDriveType.CYCLIST: "red",
     MetaDriveType.INVISIBLE_WALL: "red",
@@ -216,6 +219,31 @@ class CollisionGroup(Mask):
     def can_be_lidar_detected(cls):
         return cls.Vehicle | cls.InvisibleWall | cls.TrafficObject | cls.TrafficParticipants
 
+    # def make_collision_from_model(input_model, world):
+    #     # tristrip generation from static models
+    #     # generic tri-strip collision generator begins
+    #     geom_nodes = input_model.findAllMatches('**/+GeomNode')
+    #     geom_nodes = geom_nodes.getPath(0).node()
+    #     # print(geom_nodes)
+    #     geom_target = geom_nodes.getGeom(0)
+    #     # print(geom_target)
+    #     output_bullet_mesh = BulletTriangleMesh()
+    #     output_bullet_mesh.addGeom(geom_target)
+    #     tri_shape = BulletTriangleMeshShape(output_bullet_mesh, dynamic=False)
+    #     print(output_bullet_mesh)
+    #
+    #     body = BulletRigidBodyNode('input_model_tri_mesh')
+    #     np = self.render.attachNewNode(body)
+    #     np.node().addShape(tri_shape)
+    #     np.node().setMass(0)
+    #     np.node().setFriction(0.5)
+    #     # np.setPos(0, 0, 0)
+    #     np.setScale(1)
+    #     np.setCollideMask(BitMask32.allOn())
+    #     world.attachRigidBody(np.node())
+    #
+    # make_collision_from_model(access_deck_1, world)  # world = BulletWorld()
+
 
 LaneIndex = Tuple[str, str, int]
 Route = List[LaneIndex]
@@ -306,3 +334,46 @@ class PolicyState:
 
 
 REPLAY_DONE = "replay_done"
+
+
+class SemanticColor:
+    @staticmethod
+    def get_color(type):
+        raise NotImplementedError
+
+
+class MapSemanticColor(SemanticColor):
+    """I didn't use it at this time and keep it the same as MapTerrainAttribute"""
+    @staticmethod
+    def get_color(type):
+        if MetaDriveType.is_yellow_line(type):
+            # return (255, 0, 0, 0)
+            return (1, 0, 0, 0)
+        elif MetaDriveType.is_lane(type):
+            return (0, 1, 0, 0)
+        elif type == MetaDriveType.GROUND:
+            return (0, 0, 1, 0)
+        elif MetaDriveType.is_white_line(type) or MetaDriveType.is_road_edge(type):
+            return (0, 0, 0, 1)
+        else:
+            raise ValueError("Unsupported type: {}".format(type))
+
+
+class MapTerrainSemanticColor(SemanticColor):
+    """
+    Do not modify this as it is for terrain generation. If you want your own palette, just add a new one or modify
+    class lMapSemanticColor
+    """
+    @staticmethod
+    def get_color(type):
+        if MetaDriveType.is_yellow_line(type):
+            # return (255, 0, 0, 0)
+            return (1, 0, 0, 0)
+        elif MetaDriveType.is_lane(type):
+            return (0, 1, 0, 0)
+        elif type == MetaDriveType.GROUND:
+            return (0, 0, 1, 0)
+        elif MetaDriveType.is_white_line(type) or MetaDriveType.is_road_edge(type):
+            return (0, 0, 0, 1)
+        else:
+            raise ValueError("Unsupported type: {}".format(type))

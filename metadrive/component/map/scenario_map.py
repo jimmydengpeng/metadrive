@@ -16,6 +16,10 @@ class ScenarioMap(BaseMap):
         self.need_lane_localization = need_lane_localization
         super(ScenarioMap, self).__init__(dict(id=self.map_index), random_seed=random_seed)
 
+    def show_coordinates(self):
+        lanes = [lane_info.lane for lane_info in self.road_network.graph.values()]
+        self.engine.show_lane_coordinates(lanes)
+
     def _generate(self):
         block = ScenarioBlock(
             block_index=0,
@@ -80,6 +84,9 @@ class ScenarioMap(BaseMap):
         return ret
 
     def get_map_features(self, interval=2):
+        """
+        TODO LQY: Consider removing it as I prefer a resampled one
+        """
         map_features = super(ScenarioMap, self).get_map_features(interval=interval)
 
         # Adding the information stored in original data to here
@@ -134,8 +141,8 @@ if __name__ == "__main__":
     default_config["use_render"] = True
     default_config["debug"] = True
     default_config["debug_static_world"] = True
-    default_config["allow_coordinate_transform"] = True
     default_config["data_directory"] = AssetLoader.file_path("waymo", return_raw_style=False)
+    # default_config["data_directory"] = AssetLoader.file_path("nuscenes", return_raw_style=False)
     # default_config["data_directory"] = "/home/shady/Downloads/test_processed"
     default_config["num_scenarios"] = 1
     engine = initialize_engine(default_config)

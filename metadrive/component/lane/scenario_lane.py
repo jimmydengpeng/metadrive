@@ -8,7 +8,7 @@ import math
 from metadrive.component.lane.point_lane import PointLane
 from metadrive.scenario.scenario_description import ScenarioDescription
 from metadrive.engine.asset_loader import AssetLoader
-from metadrive.utils.math_utils import norm, mph_to_kmh
+from metadrive.utils.math import norm, mph_to_kmh
 from metadrive.scenario.utils import read_scenario_data
 
 
@@ -21,6 +21,7 @@ def nearest_point(point, line):
 
 class ScenarioLane(PointLane):
     VIS_LANE_WIDTH = 6
+    MAX_SPEED_LIMIT = 100
 
     def __init__(self, lane_id: int, map_data: dict, need_lane_localization):
         """
@@ -31,10 +32,12 @@ class ScenarioLane(PointLane):
             polygon = np.asarray(map_data[lane_id][ScenarioDescription.POLYGON])
         else:
             polygon = None
-        assert "speed_limit_kmh" in map_data[lane_id] or "speed_limit_mph" in map_data[lane_id]
-        speed_limit_kmh = map_data[lane_id].get("speed_limit_kmh", None)
-        if speed_limit_kmh is None:
-            speed_limit_kmh = mph_to_kmh(map_data[lane_id]["speed_limit_mph"])
+        if "speed_limit_kmh" in map_data[lane_id] or "speed_limit_mph" in map_data[lane_id]:
+            speed_limit_kmh = map_data[lane_id].get("speed_limit_kmh", None)
+            if speed_limit_kmh is None:
+                speed_limit_kmh = mph_to_kmh(map_data[lane_id]["speed_limit_mph"])
+        else:
+            speed_limit_kmh = self.MAX_SPEED_LIMIT
         super(ScenarioLane, self).__init__(
             center_line_points=center_line_points,
             width=self.get_lane_width(lane_id, map_data),

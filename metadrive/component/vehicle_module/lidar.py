@@ -10,7 +10,7 @@ from metadrive.component.vehicle_module.distance_detector import DistanceDetecto
 from metadrive.constants import CamMask, CollisionGroup
 from metadrive.engine.engine_utils import get_engine
 from metadrive.utils.coordinates_shift import panda_vector
-from metadrive.utils.math_utils import norm, clip
+from metadrive.utils.math import norm, clip
 from metadrive.utils.utils import get_object_from_node
 
 
@@ -60,7 +60,7 @@ class Lidar(DistanceDetector):
         norm_distance = norm(diff[0], diff[1])
         if norm_distance > self.perceive_distance:
             diff = diff / norm_distance * self.perceive_distance
-        relative = vehicle.convert_to_local_coordinates(diff)
+        relative = vehicle.convert_to_local_coordinates(diff, 0.0)
         return relative
 
     def get_surrounding_vehicles_info(self, ego_vehicle, detected_objects, num_others: int = 4, add_others_navi=False):
@@ -76,14 +76,14 @@ class Lidar(DistanceDetector):
                 ego_position = ego_vehicle.position
 
                 # assert isinstance(vehicle, IDMVehicle or Base), "Now MetaDrive Doesn't support other vehicle type"
-                relative_position = ego_vehicle.convert_to_local_coordinates(vehicle.position - ego_position)
+                relative_position = ego_vehicle.convert_to_local_coordinates(vehicle.position, ego_position)
                 # It is possible that the centroid of other vehicle is too far away from ego but lidar shed on it.
                 # So the distance may greater than perceive distance.
                 res.append(clip((relative_position[0] / self.perceive_distance + 1) / 2, 0.0, 1.0))
                 res.append(clip((relative_position[1] / self.perceive_distance + 1) / 2, 0.0, 1.0))
 
                 relative_velocity = ego_vehicle.convert_to_local_coordinates(
-                    vehicle.velocity_km_h - ego_vehicle.velocity_km_h
+                    vehicle.velocity_km_h, ego_vehicle.velocity_km_h
                 )
                 res.append(clip((relative_velocity[0] / ego_vehicle.max_speed_km_h + 1) / 2, 0.0, 1.0))
                 res.append(clip((relative_velocity[1] / ego_vehicle.max_speed_km_h + 1) / 2, 0.0, 1.0))

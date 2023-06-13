@@ -5,7 +5,7 @@ import numpy as np
 
 from metadrive.component.lane.pg_lane import PGLane
 from metadrive.constants import PGLineType
-from metadrive.utils.math_utils import norm
+from metadrive.utils.math import norm
 
 
 class StraightLane(PGLane):
@@ -93,7 +93,7 @@ class StraightLane(PGLane):
                     longs = longs[::-1]
                 for longitude in longs:
                     point = self.position(longitude, lateral)
-                    polygon.append([point[0], point[1], 0.1])
-                    polygon.append([point[0], point[1], 0.])
+                    polygon.append([point[0], point[1]])
+                    # polygon.append([point[0], point[1], 0.])
             self._polygon = np.asarray(polygon)
         return self._polygon

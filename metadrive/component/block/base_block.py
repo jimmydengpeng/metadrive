@@ -4,7 +4,7 @@ from typing import List, Dict
 
 from panda3d.bullet import BulletBoxShape, BulletGhostNode
 from panda3d.core import Vec3, LQuaternionf, Vec4, TextureStage, RigidBodyCombiner, \
-    SamplerState, NodePath, Texture
+    SamplerState, NodePath, Texture, Material
 
 from metadrive.base_class.base_object import BaseObject
 from metadrive.component.lane.abs_lane import AbstractLane
@@ -15,7 +15,7 @@ from metadrive.constants import MetaDriveType, CamMask, PGLineType, PGLineColor,
 from metadrive.engine.asset_loader import AssetLoader
 from metadrive.engine.core.physics_world import PhysicsWorld
 from metadrive.utils.coordinates_shift import panda_vector, panda_heading
-from metadrive.utils.math_utils import norm
+from metadrive.utils.math import norm
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +44,13 @@ class BaseBlock(BaseObject, DrivableAreaProperty):
         self.block_network = self.block_network_type()
 
         # a bounding box used to improve efficiency x_min, x_max, y_min, y_max
-        self.bounding_box = None
+        self._bounding_box = None
 
         # used to spawn npc
         self._respawn_roads = []
         self._block_objects = None
 
-        if self.render:
+        if self.render and not self.use_render_pipeline:
             self.ts_color = TextureStage("color")
             self.ts_normal = TextureStage("normal")
             self.ts_normal.setMode(TextureStage.M_normal)
@@ -93,6 +93,7 @@ class BaseBlock(BaseObject, DrivableAreaProperty):
             self.side_normal = self.loader.loadTexture(AssetLoader.file_path("textures", "sidewalk", "normal.png"))
             self.side_normal.set_format(Texture.F_srgb)
             self.sidewalk = self.loader.loadModel(AssetLoader.file_path("models", "box.bam"))
+            self.sidewalk.setTwoSided(False)
             self.sidewalk.setTexture(self.ts_color, self.side_texture)
             # self.sidewalk = self.loader.loadModel(AssetLoader.file_path("models", "output.egg"))
             # self.sidewalk.setTexture(self.ts_normal, self.side_normal)
@@ -227,11 +228,11 @@ class BaseBlock(BaseObject, DrivableAreaProperty):
         self.lane_node_path.reparentTo(self.origin)
         self.lane_vis_node_path.reparentTo(self.origin)
         try:
-            self.bounding_box = self.block_network.get_bounding_box()
+            self._bounding_box = self.block_network.get_bounding_box()
         except:
             if len(self.block_network.graph) > 0:
                 logging.warning("Can not find bounding box for it")
-            self.bounding_box = None, None, None, None
+            self._bounding_box = None, None, None, None
 
         self._node_path_list.append(self.sidewalk_node_path)
         self._node_path_list.append(self.lane_line_node_path)
@@ -335,3 +336,7 @@ class BaseBlock(BaseObject, DrivableAreaProperty):
     def __del__(self):
         self.destroy()
         logger.debug("{} is being deleted.".format(type(self)))
+
+    @property
+    def bounding_box(self):
+        return self._bounding_box

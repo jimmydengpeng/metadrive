@@ -104,8 +104,13 @@ class BaseEngine(EngineCore, Randomizable):
         assert object_id in self._object_tasks, "Can not find the task for object(id: {})".format(object_id)
         return self._object_tasks[object_id]
 
-    def has_policy(self, object_id):
-        return True if object_id in self._object_policies else False
+    def has_policy(self, object_id, policy_cls=None):
+        if policy_cls is None:
+            return True if object_id in self._object_policies else False
+        else:
+            return True if object_id in self._object_policies and isinstance(
+                self._object_policies[object_id], policy_cls
+            ) else False
 
     def has_task(self, object_id):
         return True if object_id in self._object_tasks else False
@@ -180,6 +185,8 @@ class BaseEngine(EngineCore, Randomizable):
         Destroy all self-generated objects or objects satisfying the filter condition
         Since we don't expect a iterator, and the number of objects is not so large, we don't use built-in filter()
         If force_destroy=True, we will destroy this element instead of storing them for next time using
+
+        filter: A list of object ids or a function returning a list of object id
         """
         force_destroy_this_obj = True if force_destroy or self.global_config["force_destroy"] else False
 
@@ -298,12 +305,24 @@ class BaseEngine(EngineCore, Randomizable):
         if self.main_camera is not None:
             self.main_camera.reset()
             if hasattr(self, "agent_manager"):
+                bev_cam = self.main_camera.is_bird_view_camera() and self.main_camera.current_track_vehicle is not None
                 vehicles = list(self.agents.values())
                 current_track_vehicle = vehicles[0]
                 self.main_camera.set_follow_lane(self.global_config["use_chase_camera_follow_lane"])
                 self.main_camera.track(current_track_vehicle)
+                if bev_cam:
+                    self.main_camera.stop_track()
+                    self.main_camera.set_bird_view_pos(current_track_vehicle.position)
+
                 # if self.global_config["is_multi_agent"]:
                 #     self.main_camera.stop_track(bird_view_on_current_position=False)
+
+        # reset terrain
+        center_p = self.current_map.get_center_point()
+        self.terrain.reset(center_p)
+        if self.sky_box is not None:
+            self.sky_box.set_position(center_p)
+
         self.taskMgr.step()
 
     def before_step(self, external_actions: Dict[AnyStr, np.array]):
@@ -609,11 +628,21 @@ class BaseEngine(EngineCore, Randomizable):
         This function automatically initialize models/objects. It can prevent the lagging when creating some objects
         for the first time.
         """
-        if self.global_config["preload_pedestrian"]:
+        if self.global_config["preload_models"]:
             from metadrive.component.traffic_participants.pedestrian import Pedestrian
+            from metadrive.component.traffic_light.base_traffic_light import BaseTrafficLight
+            from metadrive.component.static_object.traffic_object import TrafficBarrier
+            from metadrive.component.static_object.traffic_object import TrafficCone
             Pedestrian.init_pedestrian_model()
             warm_up_pedestrian = self.spawn_object(Pedestrian, position=[0, 0], heading_theta=0, record=False)
+            warm_up_light = self.spawn_object(BaseTrafficLight, lane=None, position=[0, 0], record=False)
+            barrier = self.spawn_object(TrafficBarrier, position=[0, 0], heading_theta=0, record=False)
+            cone = self.spawn_object(TrafficCone, position=[0, 0], heading_theta=0, record=False)
             for vel in Pedestrian.SPEED_LIST:
                 warm_up_pedestrian.set_velocity([1, 0], vel - 0.1)
                 self.taskMgr.step()
-            self.clear_objects([warm_up_pedestrian.id], record=False)
+            self.clear_objects([warm_up_pedestrian.id, warm_up_light.id, barrier.id, cone.id], record=False)
+            warm_up_pedestrian = None
+            warm_up_light = None
+            barrier = None
+            cone = None

@@ -12,6 +12,7 @@ from metadrive.utils.coordinates_shift import nuplan_to_metadrive_vector
 from metadrive.component.lane.point_lane import PointLane
 
 from metadrive.utils.interpolating_line import InterpolatingLine
+logger = logging.getLogger(__name__)
 
 
 class NuPlanLane(PointLane):
@@ -21,16 +22,17 @@ class NuPlanLane(PointLane):
         """
 
         if isinstance(lane_meta_data.polygon.boundary, MultiLineString):
-            boundary = gpd.GeoSeries(lane_meta_data.polygon.boundary).explode()
+            # logger.warning("Stop using boundaries! Use exterior instead!")
+            boundary = gpd.GeoSeries(lane_meta_data.polygon.boundary).explode(index_parts=True)
             sizes = []
             for idx, polygon in enumerate(boundary[0]):
                 sizes.append(len(polygon.xy[1]))
             points = boundary[0][np.argmax(sizes)].xy
         elif isinstance(lane_meta_data.polygon.boundary, LineString):
             points = lane_meta_data.polygon.boundary.xy
-        polygon = [[points[0][i], points[1][i], 0.1] for i in range(len(points[0]))]
-        polygon += [[points[0][i], points[1][i], 0.] for i in range(len(points[0]))]
-        polygon = nuplan_to_metadrive_vector(polygon, nuplan_center=[nuplan_center[0], nuplan_center[1], 0])
+        polygon = [[points[0][i], points[1][i]] for i in range(len(points[0]))]
+        # polygon += [[points[0][i], points[1][i], 0.] for i in range(len(points[0]))]
+        polygon = nuplan_to_metadrive_vector(polygon, nuplan_center=[nuplan_center[0], nuplan_center[1]])
         super(NuPlanLane, self).__init__(
             self._extract_centerline(lane_meta_data, nuplan_center),
             width=None,  # we use width_at to get width
@@ -70,9 +72,6 @@ class NuPlanLane(PointLane):
         path = boundary.discrete_path
         points = np.array([nuplan_to_metadrive_vector([pose.x, pose.y], nuplan_center=center) for pose in path])
         return points
-
-    # def get_polygon(self):
-    #     return np.asarray(self.polygon)
 
 
 if __name__ == "__main__":

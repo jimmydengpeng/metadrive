@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.pyplot import figure
 
+from metadrive.component.static_object.traffic_object import TrafficCone, TrafficBarrier
 from metadrive.component.traffic_light.base_traffic_light import BaseTrafficLight
 from metadrive.component.traffic_participants.cyclist import Cyclist
 from metadrive.component.traffic_participants.pedestrian import Pedestrian
@@ -14,6 +15,11 @@ from metadrive.constants import DATA_VERSION, DEFAULT_AGENT
 from metadrive.scenario import ScenarioDescription as SD
 from metadrive.scenario.scenario_description import ScenarioDescription
 from metadrive.type import MetaDriveType
+from metadrive.utils.math import wrap_to_pi
+
+NP_ARRAY_DECIMAL = 3
+VELOCITY_DECIMAL = 1  # velocity can not be set accurately
+MIN_LENGTH_RATIO = 0.8
 
 
 def draw_map(map_features, show=False):
@@ -38,6 +44,10 @@ def get_type_from_class(obj_class):
         return MetaDriveType.CYCLIST
     elif issubclass(obj_class, BaseTrafficLight) or obj_class is BaseTrafficLight:
         return MetaDriveType.TRAFFIC_LIGHT
+    elif issubclass(obj_class, TrafficBarrier) or obj_class is TrafficBarrier:
+        return MetaDriveType.TRAFFIC_BARRIER
+    elif issubclass(obj_class, TrafficCone) or obj_class is TrafficCone:
+        return MetaDriveType.TRAFFIC_CONE
     else:
         return MetaDriveType.OTHER
 
@@ -83,7 +93,7 @@ def find_data_manager_name(manager_info):
     return None
 
 
-def convert_recorded_scenario_exported(record_episode, scenario_log_interval=0.1):
+def convert_recorded_scenario_exported(record_episode, scenario_log_interval=0.1, to_dict=True):
     """
     This function utilizes the recorded data natively emerging from MetaDrive run.
     The output data structure follows MetaDrive data format, but some changes might happen compared to original data.
@@ -112,6 +122,7 @@ def convert_recorded_scenario_exported(record_episode, scenario_log_interval=0.1
 
     result[SD.METADATA] = {}
     result[SD.METADATA][SD.METADRIVE_PROCESSED] = True
+    result[SD.METADATA][SD.ID] = result[SD.ID]
     result[SD.METADATA]["dataset"] = "metadrive"
     result[SD.METADATA]["seed"] = record_episode["global_seed"]
     result[SD.METADATA]["scenario_id"] = record_episode["scenario_index"]
@@ -160,7 +171,7 @@ def convert_recorded_scenario_exported(record_episode, scenario_log_interval=0.1
         k: {
             "type": MetaDriveType.TRAFFIC_LIGHT,
             "state": {
-                ScenarioDescription.TRAFFIC_LIGHT_STATUS: [None] * episode_len
+                ScenarioDescription.TRAFFIC_LIGHT_STATUS: [MetaDriveType.LIGHT_UNKNOWN] * episode_len
             },
             ScenarioDescription.TRAFFIC_LIGHT_POSITION: np.zeros(shape=(3, ), dtype=np.float32),
             ScenarioDescription.TRAFFIC_LIGHT_LANE: None,
@@ -304,14 +315,15 @@ def convert_recorded_scenario_exported(record_episode, scenario_log_interval=0.1
         data_manager_raw_data = record_episode["manager_metadata"][data_manager_name].get("raw_data", None)
         if data_manager_raw_data:
             result[SD.METADATA]["history_metadata"] = data_manager_raw_data["metadata"]
-
-    result = result.to_dict()
-    SD.sanity_check(result, check_self_type=True)
+    if to_dict:
+        result = result.to_dict()
+        SD.sanity_check(result, check_self_type=True)
 
     return result
 
 
 def read_scenario_data(file_path):
+    assert SD.is_scenario_file(file_path), "File: {} is not scenario file".format(file_path)
     with open(file_path, "rb") as f:
         # unpickler = CustomUnpickler(f)
         data = pickle.load(f)
@@ -327,15 +339,185 @@ def read_dataset_summary(file_folder):
 
     The second is the new method which use a summary file to record important metadata of each scenario.
     """
-    summary_file = os.path.join(file_folder, "dataset_summary.pkl")
+    summary_file = os.path.join(file_folder, SD.DATASET.SUMMARY_FILE)
+    mapping_file = os.path.join(file_folder, SD.DATASET.MAPPING_FILE)
     if os.path.isfile(summary_file):
         with open(summary_file, "rb") as f:
             summary_dict = pickle.load(f)
 
     else:
-        files = os.listdir(file_folder)
-        files = sorted(files, key=lambda file_name: int(file_name.replace(".pkl", "")))
-        files = [os.path.join(file_folder, p) for p in files]
+        # Create a fake one
+        files = []
+        for file in os.listdir(file_folder):
+            if SD.is_scenario_file(os.path.basename(file)):
+                files.append(file)
+        try:
+            files = sorted(files, key=lambda file_name: int(file_name.replace(".pkl", "")))
+        except ValueError:
+            files = sorted(files, key=lambda file_name: file_name.replace(".pkl", ""))
+        files = [p for p in files]
         summary_dict = {f: {} for f in files}
 
-    return summary_dict, list(summary_dict.keys())
+    if os.path.exists(mapping_file):
+        with open(mapping_file, "rb") as f:
+            mapping = pickle.load(f)
+    else:
+        # Create a fake one
+        mapping = {k: "" for k in summary_dict}
+
+    for file in summary_dict:
+        assert file in mapping, "FileName in mapping mismatch with summary"
+        assert SD.is_scenario_file(file), "File:{} is not sd scenario file".format(file)
+        file_path = os.path.join(file_folder, mapping[file], file)
+        assert os.path.exists(file_path), "Can not find file: {}".format(file_path)
+
+    return summary_dict, list(summary_dict.keys()), mapping
+
+
+def get_number_of_scenarios(dataset_path):
+    _, files, _ = read_dataset_summary(dataset_path)
+    return len(files)
+
+
+def assert_scenario_equal(scenarios1, scenarios2, only_compare_sdc=False):
+    # ===== These two set of data should align =====
+    assert set(scenarios1.keys()) == set(scenarios2.keys())
+    for scenario_id in scenarios1.keys():
+        SD.sanity_check(scenarios1[scenario_id], check_self_type=True)
+        SD.sanity_check(scenarios2[scenario_id], check_self_type=True)
+        old_scene = SD(scenarios1[scenario_id])
+        new_scene = SD(scenarios2[scenario_id])
+        SD.sanity_check(old_scene)
+        SD.sanity_check(new_scene)
+        assert old_scene[SD.LENGTH] >= new_scene[SD.LENGTH], (old_scene[SD.LENGTH], new_scene[SD.LENGTH])
+
+        if only_compare_sdc:
+            sdc1 = old_scene[SD.METADATA][SD.SDC_ID]
+            sdc2 = new_scene[SD.METADATA][SD.SDC_ID]
+            state_dict1 = old_scene[SD.TRACKS][sdc1]
+            state_dict2 = new_scene[SD.TRACKS][sdc2]
+            min_len = min(state_dict1[SD.STATE]["position"].shape[0], state_dict2[SD.STATE]["position"].shape[0])
+            max_len = max(state_dict1[SD.STATE]["position"].shape[0], state_dict2[SD.STATE]["position"].shape[0])
+            assert min_len / max_len > MIN_LENGTH_RATIO, "Replayed Scenario length ratio: {}".format(min_len / max_len)
+            for k in state_dict1[SD.STATE].keys():
+                if k in ["action", "throttle_brake", "steering"]:
+                    continue
+                elif k == "position":
+                    np.testing.assert_almost_equal(
+                        state_dict1[SD.STATE][k][:min_len][..., :2],
+                        state_dict2[SD.STATE][k][:min_len][..., :2],
+                        decimal=NP_ARRAY_DECIMAL
+                    )
+                elif k == "heading":
+                    np.testing.assert_almost_equal(
+                        wrap_to_pi(state_dict1[SD.STATE][k][:min_len] - state_dict2[SD.STATE][k][:min_len]),
+                        np.zeros_like(state_dict2[SD.STATE][k][:min_len]),
+                        decimal=NP_ARRAY_DECIMAL
+                    )
+                elif k == "velocity":
+                    np.testing.assert_almost_equal(
+                        state_dict1[SD.STATE][k][:min_len],
+                        state_dict2[SD.STATE][k][:min_len],
+                        decimal=VELOCITY_DECIMAL
+                    )
+            assert state_dict1[SD.TYPE] == state_dict2[SD.TYPE]
+
+        else:
+            # assert set(old_scene[SD.TRACKS].keys()).issuperset(set(new_scene[SD.TRACKS].keys()) - {new_scene[SD.METADATA][SD.SDC_ID]})
+            assert len(old_scene[SD.TRACKS]) == len(new_scene[SD.TRACKS]), "obj num mismatch"
+            for track_id, track in old_scene[SD.TRACKS].items():
+                if track_id == new_scene[SD.METADATA][SD.SDC_ID]:
+                    continue
+                if track_id not in new_scene[SD.TRACKS]:
+                    assert track_id == old_scene[SD.METADATA][SD.SDC_ID]
+                    continue
+                for state_k in new_scene[SD.TRACKS][track_id][SD.STATE]:
+                    state_array_1 = new_scene[SD.TRACKS][track_id][SD.STATE][state_k]
+                    state_array_2 = track[SD.STATE][state_k]
+                    min_len = min(state_array_1.shape[0], state_array_2.shape[0])
+                    max_len = max(state_array_1.shape[0], state_array_2.shape[0])
+                    assert min_len / max_len > MIN_LENGTH_RATIO, "Replayed Scenario length ratio: {}".format(
+                        min_len / max_len
+                    )
+
+                    if state_k == "velocity":
+                        decimal = VELOCITY_DECIMAL
+                    else:
+                        decimal = NP_ARRAY_DECIMAL
+
+                    if state_k == "heading":
+                        # error < 5.7 degree is acceptable
+                        broader_ratio = 1
+                        ret = abs(wrap_to_pi(state_array_1[:min_len] - state_array_2[:min_len])) < 1e-1
+                        ratio = np.sum(np.asarray(ret, dtype=np.int8)) / len(ret)
+                        if ratio < broader_ratio:
+                            raise ValueError("Match ration: {}, Target: {}".format(ratio, broader_ratio))
+
+                        strict_ratio = 0.98
+                        ret = abs(wrap_to_pi(state_array_1[:min_len] - state_array_2[:min_len])) < 1e-4
+                        ratio = np.sum(np.asarray(ret, dtype=np.int8)) / len(ret)
+                        if ratio < strict_ratio:
+                            raise ValueError("Match ration: {}, Target: {}".format(ratio, strict_ratio))
+                    else:
+                        strict_ratio = 0.99
+                        ret = abs(wrap_to_pi(state_array_1[:min_len] - state_array_2[:min_len])) < pow(10, -decimal)
+                        ratio = np.sum(np.asarray(ret, dtype=np.int8)) / len(ret)
+                        if ratio < strict_ratio:
+                            raise ValueError("Match ration: {}, Target: {}".format(ratio, strict_ratio))
+
+                assert new_scene[SD.TRACKS][track_id][SD.TYPE] == track[SD.TYPE]
+
+            track_id = new_scene[SD.METADATA][SD.SDC_ID]
+            for k in new_scene.get_sdc_track()["state"]:
+                state_array_1 = new_scene.get_sdc_track()["state"][k]
+                state_array_2 = old_scene.get_sdc_track()["state"][k]
+                min_len = min(state_array_1.shape[0], state_array_2.shape[0])
+                max_len = max(state_array_1.shape[0], state_array_2.shape[0])
+                assert min_len / max_len > MIN_LENGTH_RATIO, "Replayed Scenario length ratio: {}".format(
+                    min_len / max_len
+                )
+
+                if k == "velocity":
+                    decimal = VELOCITY_DECIMAL
+                elif k == "position":
+                    state_array_1 = state_array_1[..., :2]
+                    state_array_2 = state_array_2[..., :2]
+                    decimal = NP_ARRAY_DECIMAL
+                else:
+                    decimal = NP_ARRAY_DECIMAL
+                np.testing.assert_almost_equal(state_array_1[:min_len], state_array_2[:min_len], decimal=decimal)
+
+            assert new_scene[SD.TRACKS][track_id][SD.TYPE] == track[SD.TYPE]
+
+        assert set(old_scene[SD.MAP_FEATURES].keys()).issuperset(set(new_scene[SD.MAP_FEATURES].keys()))
+        assert set(old_scene[SD.DYNAMIC_MAP_STATES].keys()) == set(new_scene[SD.DYNAMIC_MAP_STATES].keys())
+
+        for map_id, map_feat in new_scene[SD.MAP_FEATURES].items():
+            # It is possible that some line are not included in new scene but exist in old scene.
+            # old_scene_polyline = map_feat["polyline"]
+            # if coordinate_transform:
+            #     old_scene_polyline = waymo_to_metadrive_vector(old_scene_polyline)
+            np.testing.assert_almost_equal(
+                new_scene[SD.MAP_FEATURES][map_id]["polyline"], map_feat["polyline"], decimal=NP_ARRAY_DECIMAL
+            )
+            assert new_scene[SD.MAP_FEATURES][map_id][SD.TYPE] == map_feat[SD.TYPE]
+
+        for obj_id, obj_state in old_scene[SD.DYNAMIC_MAP_STATES].items():
+            new_state_dict = new_scene[SD.DYNAMIC_MAP_STATES][obj_id][SD.STATE]
+            old_state_dict = obj_state[SD.STATE]
+            assert set(new_state_dict.keys()) == set(old_state_dict.keys())
+            for k in new_state_dict.keys():
+                min_len = min(new_state_dict[k].shape[0], old_state_dict[k].shape[0])
+                max_len = max(new_state_dict[k].shape[0], old_state_dict[k].shape[0])
+                assert min_len / max_len > MIN_LENGTH_RATIO, "Replayed Scenario length ratio: {}".format(
+                    min_len / max_len
+                )
+                if k == ScenarioDescription.TRAFFIC_LIGHT_STATUS:
+                    same_light = new_state_dict[k][:min_len] == old_state_dict[k][:min_len]
+                    assert same_light.all()
+                else:
+                    np.testing.assert_almost_equal(
+                        new_state_dict[k][:min_len], old_state_dict[k][:min_len], decimal=NP_ARRAY_DECIMAL
+                    )
+
+            assert new_scene[SD.DYNAMIC_MAP_STATES][obj_id][SD.TYPE] == obj_state[SD.TYPE]

@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-from metadrive.utils.math_utils import norm
+from metadrive.utils.math import norm, get_vertical_vector
 
 
 class InterpolatingLine:
@@ -101,14 +101,26 @@ class InterpolatingLine:
 
             seg_property = {
                 "length": self.points_distance(p_start, p_end),
-                "direction": self.points_direction(p_start, p_end),
-                "lateral_direction": self.points_lateral_direction(p_start, p_end),
+                "direction": np.asarray(self.points_direction(p_start, p_end)),
+                "lateral_direction": np.asarray(self.points_lateral_direction(p_start, p_end)),
                 "heading": self.points_heading(p_start, p_end),
                 "start_point": p_start,
                 "end_point": p_end
             }
             ret.append(seg_property)
             p_start_idx = p_end_idx  # next
+        if len(ret) == 0:
+            # static, length=zero
+            seg_property = {
+                "length": 0.1,
+                "direction": np.asarray((1, 0)),
+                "lateral_direction": np.asarray((0, 1)),
+                "heading": 0,
+                "start_point": points[0],
+                "end_point": np.asarray([points[0][0] + 0.1, points[0][1]])
+            }
+            ret.append(seg_property)
+
         return ret
 
     @staticmethod
@@ -121,8 +133,8 @@ class InterpolatingLine:
 
     @staticmethod
     def points_lateral_direction(start_p, end_p):
-        direction = (end_p - start_p) / norm((end_p - start_p)[0], (end_p - start_p)[1])
-        return np.array([-direction[1], direction[0]])
+        # direction = (end_p - start_p) / norm((end_p - start_p)[0], (end_p - start_p)[1])
+        return np.asarray(get_vertical_vector(end_p - start_p)[1])
 
     @staticmethod
     def points_heading(start_p, end_p):

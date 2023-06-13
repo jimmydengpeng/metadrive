@@ -6,14 +6,11 @@ import numpy as np
 from metadrive.component.lane.pg_lane import PGLane
 from metadrive.constants import DrivableAreaProperty
 from metadrive.constants import PGLineType
-from metadrive.utils.math_utils import wrap_to_pi, norm, Vector
+from metadrive.utils.math import wrap_to_pi, norm, Vector
 
 
 class CircularLane(PGLane):
     """A lane going in circle arc."""
-
-    CIRCULAR_SEGMENT_LENGTH = 1
-
     def __init__(
         self,
         center: Vector,
@@ -109,7 +106,7 @@ class CircularLane(PGLane):
             end_heading = self.heading_theta_at(self.length)
             end_dir = [math.cos(end_heading), math.sin(end_heading)]
             polygon = []
-            longs = np.arange(0, self.length + self.CIRCULAR_SEGMENT_LENGTH, self.CIRCULAR_SEGMENT_LENGTH)
+            longs = np.arange(0, self.length + self.POLYGON_SAMPLE_RATE, self.POLYGON_SAMPLE_RATE)
             for k, lateral in enumerate([+self.width / 2, -self.width / 2]):
                 if k == 1:
                     longs = longs[::-1]
@@ -119,54 +116,37 @@ class CircularLane(PGLane):
                         # control the adding sequence
                         if k == 1:
                             # last point
-                            polygon.append([point[0], point[1], 0.0])
-                            polygon.append([point[0], point[1], -0.5])
+                            polygon.append([point[0], point[1]])
 
                         # extend
                         polygon.append(
                             [
                                 point[0] - start_dir[0] * self.POLYGON_SAMPLE_RATE,
-                                point[1] - start_dir[1] * self.POLYGON_SAMPLE_RATE, 0.0
-                            ]
-                        )
-                        polygon.append(
-                            [
-                                point[0] - start_dir[0] * self.POLYGON_SAMPLE_RATE,
-                                point[1] - start_dir[1] * self.POLYGON_SAMPLE_RATE, -0.5
+                                point[1] - start_dir[1] * self.POLYGON_SAMPLE_RATE
                             ]
                         )
 
                         if k == 0:
                             # first point
-                            polygon.append([point[0], point[1], 0.0])
-                            polygon.append([point[0], point[1], -0.5])
+                            polygon.append([point[0], point[1]])
                     elif (t == 0 and k == 1) or (t == len(longs) - 1 and k == 0):
 
                         if k == 0:
                             # second point
-                            polygon.append([point[0], point[1], 0.0])
-                            polygon.append([point[0], point[1], -0.5])
+                            polygon.append([point[0], point[1]])
 
                         polygon.append(
                             [
                                 point[0] + end_dir[0] * self.POLYGON_SAMPLE_RATE,
-                                point[1] + end_dir[1] * self.POLYGON_SAMPLE_RATE, 0.0
-                            ]
-                        )
-                        polygon.append(
-                            [
-                                point[0] + end_dir[0] * self.POLYGON_SAMPLE_RATE,
-                                point[1] + end_dir[1] * self.POLYGON_SAMPLE_RATE, -0.5
+                                point[1] + end_dir[1] * self.POLYGON_SAMPLE_RATE
                             ]
                         )
 
                         if k == 1:
                             # third point
-                            polygon.append([point[0], point[1], 0.0])
-                            polygon.append([point[0], point[1], -0.5])
+                            polygon.append([point[0], point[1]])
                     else:
-                        polygon.append([point[0], point[1], 0.0])
-                        polygon.append([point[0], point[1], -0.5])
+                        polygon.append([point[0], point[1]])
             self._polygon = polygon
         return self._polygon
 

@@ -7,8 +7,8 @@ from metadrive.component.lane.abs_lane import AbstractLane
 from metadrive.component.road_network.base_road_network import BaseRoadNetwork
 from metadrive.component.road_network.road import Road
 from metadrive.constants import Decoration
-from metadrive.utils.math_utils import get_boxes_bounding_box
-from metadrive.utils.pg_utils.utils import get_lanes_bounding_box
+from metadrive.utils.math import get_boxes_bounding_box
+from metadrive.utils.pg.utils import get_lanes_bounding_box
 
 logger = logging.getLogger(__name__)
 
@@ -279,8 +279,19 @@ class NodeRoadNetwork(BaseRoadNetwork):
                 for k, lane in enumerate(lanes):
                     ret["{}".format(lane.index)] = {
                         SD.POLYLINE: lane.get_polyline(interval),
-                        SD.POLYGON: lane.get_polygon(),
+                        SD.POLYGON: lane.polygon,
                         SD.TYPE: MetaDriveType.LANE_SURFACE_STREET,
                         "speed_limit_kmh": lane.speed_limit
                     }
+        return ret
+
+    def get_all_lanes(self):
+        """
+        This function will return all lanes in the road network
+        :return: list of lanes
+        """
+        ret = []
+        for _from, _to_dict in self.graph.items():
+            for _to, lanes in _to_dict.items():
+                ret += lanes
         return ret

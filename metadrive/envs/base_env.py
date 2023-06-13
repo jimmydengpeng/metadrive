@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import defaultdict
 from typing import Union, Dict, AnyStr, Optional, Tuple, Callable
@@ -10,6 +11,7 @@ from metadrive.component.vehicle_module.mini_map import MiniMap
 from metadrive.component.vehicle_module.rgb_camera import RGBCamera
 from metadrive.component.vehicle_module.vehicle_panel import VehiclePanel
 from metadrive.constants import RENDER_MODE_NONE, DEFAULT_AGENT
+from metadrive.constants import TerminationState
 from metadrive.engine.engine_utils import initialize_engine, close_engine, \
     engine_initialized, set_global_random_seed, initialize_global_config, get_global_config
 from metadrive.manager.agent_manager import AgentManager
@@ -53,10 +55,11 @@ BASE_DEFAULT_CONFIG = dict(
     disable_model_compression=False,  # disable compression if you wish to launch the window quicker.
     cull_scene=True,  # only for debug use
     use_chase_camera_follow_lane=False,  # If true, then vision would be more stable.
-    camera_height=1.8,
-    camera_dist=6.5,
+    camera_height=2.2,
+    camera_dist=7.5,
     camera_pitch=None,  # degree
     camera_smooth=True,  # degree
+    camera_fov=65,
     prefer_track_agent=None,
     draw_map_resolution=1024,  # Drawing the map in a canvas of (x, x) pixels.
     top_down_camera_initial_x=0,
@@ -123,6 +126,7 @@ BASE_DEFAULT_CONFIG = dict(
         rgb_to_grayscale=False,
         gaussian_noise=0.0,
         dropout_prob=0.0,
+        light=False,  # vehicle light, only available when enabling render-pipeline
     ),
 
     # ===== Agent config =====
@@ -157,6 +161,16 @@ BASE_DEFAULT_CONFIG = dict(
     # when possible. But it is possible that some classes of objects are always forcefully respawn
     # and thus those used objects are stored in the buffer and never be reused.
     num_buffering_objects=200,
+    # turn on to use render pipeline, which provides advanced rendering effects (Beta)
+    render_pipeline=False,
+    # daytime is only available when using render-pipeline
+    daytime="19:00",  # use string like "13:40", We usually set this by editor in toolkit
+
+    # ===== Mesh Terrain =====
+    # road will have a marin whose width is determined by this value, unit: [m]
+    drivable_region_extension=6,
+    # height scale for mountains, unit: [m]
+    height_scale=120,
 
     # ===== Others =====
     # The maximum distance used in PGLOD. Set to None will use the default values.
@@ -170,11 +184,12 @@ BASE_DEFAULT_CONFIG = dict(
     show_skybox=True,
     show_terrain=True,
     show_interface=True,
-    interface_panel=[MiniMap, RGBCamera, VehiclePanel],
+    show_policy_mark=False,  # show marks for policies for debugging multi-policy setting
     show_coordinates=False,  # show coordinates for maps and objects for debug
+    interface_panel=[MiniMap, RGBCamera, VehiclePanel],
     multi_thread_render=True,
     multi_thread_render_mode="Cull",  # or "Cull/Draw"
-    preload_pedestrian=True,  # preload pedestrian Object for avoiding lagging when creating it for the first time
+    preload_models=True,  # preload pedestrian Object for avoiding lagging when creating it for the first time
 
     # record/replay metadata
     record_episode=False,  # when replay_episode is not None ,this option will be useless
@@ -203,6 +218,7 @@ class BaseEnv(gym.Env):
 
         self.config = global_config
         initialize_global_config(self.config)
+        self.logger = logging.getLogger(self.logger_name)
 
         # agent check
         self.num_agents = self.config["num_agents"]
@@ -553,7 +569,7 @@ class BaseEnv(gym.Env):
         Engine setting after launching
         """
         self.engine.accept("r", self.reset)
-        self.engine.accept("p", self.capture)
+        # self.engine.accept("c", self.capture)
         self.engine.register_manager("agent_manager", self.agent_manager)
         self.engine.register_manager("record_manager", RecordManager())
         self.engine.register_manager("replay_manager", ReplayManager())
@@ -593,10 +609,12 @@ class BaseEnv(gym.Env):
         self,
         policies: Union[dict, Callable],
         scenario_index: Union[list, int],
-        time_interval=0.1,
+        max_episode_length=None,
         verbose=False,
+        suppress_warning=False,
         render_topdown=False,
-        return_done_info=True
+        return_done_info=True,
+        to_dict=True
     ):
         """
         We export scenarios into a unified format with 10hz sample rate
@@ -628,12 +646,20 @@ class BaseEnv(gym.Env):
             while not done:
                 obs, reward, done, info = self.step(_act(obs))
                 count += 1
+                if max_episode_length is not None and count > max_episode_length:
+                    done = True
+                    info[TerminationState.MAX_STEP] = True
+                if count > 10000 and not suppress_warning:
+                    logging.warning(
+                        "Episode length is too long! If this behavior is intended, "
+                        "set suppress_warning=True to disable this message"
+                    )
                 if render_topdown:
                     self.render("topdown")
             episode = self.engine.dump_episode()
             if verbose:
-                print("Finish scenario {} with {} steps.".format(index, count))
-            scenarios_to_export[index] = convert_recorded_scenario_exported(episode)
+                logging.info("Finish scenario {} with {} steps.".format(index, count))
+            scenarios_to_export[index] = convert_recorded_scenario_exported(episode, to_dict=to_dict)
             done_info[index] = info
         self.config["record_episode"] = False
         if return_done_info:
@@ -648,3 +674,7 @@ class BaseEnv(gym.Env):
         """
         episode = self.engine.dump_episode()
         return convert_recorded_scenario_exported(episode)
+
+    @property
+    def logger_name(self):
+        return __file__

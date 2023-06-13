@@ -45,7 +45,7 @@ class MainCamera:
         # self.engine = engine
 
         # vehicle chase camera
-        self.camera = engine.cam
+        self.camera = engine.camera
         self.camera_queue = None
         self.camera_dist = camera_dist
         self.camera_pitch = -engine.global_config["camera_pitch"] if engine.global_config["camera_pitch"
@@ -187,7 +187,7 @@ class MainCamera:
         if not self.FOLLOW_LANE:
             forward_dir = vehicle.system.get_forward_vector()
             # camera is facing to y
-            current_forward_dir = [forward_dir[1], -forward_dir[0]]
+            current_forward_dir = [forward_dir[0], forward_dir[1]]
         else:
             current_forward_dir = self._dir_of_lane(vehicle.navigation.current_ref_lanes[0], vehicle.position)
         self.direction_running_mean.append(current_forward_dir)
@@ -214,10 +214,10 @@ class MainCamera:
         if self.camera_pitch is None:
             self.camera.lookAt(current_pos)
             # camera is facing to y
-            self.camera.setH(vehicle.origin.getH() + np.rad2deg(self.mouse_rotate) - 90)
+            self.camera.setH(vehicle.origin.getH() + np.rad2deg(self.mouse_rotate))
         else:
             # camera is facing to y
-            self.camera.setH(vehicle.origin.getH() - 90)
+            self.camera.setH(vehicle.origin.getH())
             self.camera.setP(self.camera_pitch)
         if self.FOLLOW_LANE:
             self.camera.setH(
@@ -373,11 +373,11 @@ class MainCamera:
             pMouse = self.engine.mouseWatcherNode.getMouse()
             pFrom = Point3()
             pTo = Point3()
-            self.camera.node().getLens().extrude(pMouse, pFrom, pTo)
+            self.engine.cam.node().getLens().extrude(pMouse, pFrom, pTo)
 
             # Transform to global coordinates
-            pFrom = self.engine.render.getRelativePoint(self.camera, pFrom)
-            pTo = self.engine.render.getRelativePoint(self.camera, pTo)
+            pFrom = self.engine.render.getRelativePoint(self.engine.cam, pFrom)
+            pTo = self.engine.render.getRelativePoint(self.engine.cam, pTo)
             ret = self.engine.physics_world.dynamic_world.rayTestClosest(pFrom, pTo, CollisionGroup.Terrain)
             self.camera_x = ret.getHitPos()[0]
             self.camera_y = ret.getHitPos()[1]

@@ -9,7 +9,7 @@ from metadrive.engine.asset_loader import AssetLoader
 from metadrive.engine.engine_utils import engine_initialized
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.envs.real_data_envs.waymo_env import WaymoEnv
-from metadrive.manager.map_manager import PGMapManager
+from metadrive.manager.pg_map_manager import PGMapManager
 from metadrive.manager.traffic_manager import PGTrafficManager
 from metadrive.manager.traffic_manager import TrafficMode
 from metadrive.manager.waymo_data_manager import WaymoDataManager
@@ -27,7 +27,7 @@ MIX_WAYMO_PG_ENV_CONFIG = dict(
 
     # ===== Waymo Traffic Config =====
     no_traffic=False,
-    replay=True,
+    reactive_traffic=False,
 
     # ===== PG Map config =====
     start_seed=0,
@@ -100,7 +100,6 @@ class MixWaymoPGEnv(WaymoEnv):
         self.pg_map_manager = PGMapManager()
         self.pg_traffic_manager = PGTrafficManager()
 
-        self.in_stop = False
         super(WaymoEnv, self).setup_engine()
         if self.real_data_ratio > 0:
             self.is_current_real_data = True

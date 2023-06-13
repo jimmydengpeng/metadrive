@@ -5,7 +5,7 @@ import shutil
 from metadrive.envs.real_data_envs.nuplan_env import NuPlanEnv
 from metadrive.envs.scenario_env import ScenarioEnv
 from metadrive.policy.replay_policy import NuPlanReplayEgoCarPolicy, ReplayEgoCarPolicy
-from metadrive.utils.scene_export_utils.scene_export_utils import assert_scenario_equal
+from metadrive.scenario.utils import assert_scenario_equal
 
 
 def _test_export_nuplan_scenario_hard(start_seed=0, num_scenarios=5, render_export_env=False, render_load_env=False):
@@ -14,7 +14,6 @@ def _test_export_nuplan_scenario_hard(start_seed=0, num_scenarios=5, render_expo
         {
             "use_render": render_export_env,
             "agent_policy": NuPlanReplayEgoCarPolicy,
-            "replay": True,
             "start_scenario_index": start_seed,
             "load_city_map": True,
             "num_scenarios": num_scenarios,
