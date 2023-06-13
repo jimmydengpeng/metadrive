@@ -71,6 +71,7 @@ class ScenarioEnv(BaseEnv):
     def default_config(cls):
         config = super(ScenarioEnv, cls).default_config()
         config.update(SCENARIO_ENV_CONFIG)
+        config["vehicle_config"].register_type("rgb_camera", str)
         return config
 
     def __init__(self, config=None):

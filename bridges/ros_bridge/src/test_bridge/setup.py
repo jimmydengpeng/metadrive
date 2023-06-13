@@ -23,7 +23,8 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_bridge = test_bridge.camera_bridge:main',
-            'lidar_bridge = test_bridge.lidar_bridge:main'
+            'lidar_bridge = test_bridge.lidar_bridge:main',
+            'obj_bridge = test_bridge.obj_bridge:main'
         ],
     },
 )

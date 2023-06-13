@@ -232,6 +232,14 @@ class BaseEnv(gym.Env):
         """Add more special process to merged config"""
         config["vehicle_config"]["random_agent_model"] = config["random_agent_model"]
         config["vehicle_config"]["rgb_clip"] = config["rgb_clip"]
+
+        config["vehicle_config"]["rgb_camera_config"] = config["vehicle_config"]["rgb_camera"]
+        if type(config["vehicle_config"]["rgb_camera"]) == str: # ugly workaround
+            import json
+            with open(config["vehicle_config"]["rgb_camera"], "r") as f:
+                rgb_camera_config = json.load(f)
+            config["vehicle_config"]["rgb_camera"] = (rgb_camera_config["width"], rgb_camera_config["height"])
+
         return config
 
     def _get_observations(self) -> Dict[str, "ObservationBase"]:

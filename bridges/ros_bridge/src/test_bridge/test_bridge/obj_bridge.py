@@ -3,41 +3,46 @@ from rclpy.node import Node
 import zmq
 import struct
 import numpy as np
-import cv2
 
-from sensor_msgs.msg import Image
+from vision_msgs.msg import BoundingBox3DArray, BoundingBox3D
+from geometry_msgs.msg import Point, Quaternion, Pose, Vector3
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
-from cv_bridge import CvBridge
 
 
-class CameraPublisher(Node):
-    cv_bridge = CvBridge()
+class ObjectPublisher(Node):
     def __init__(self):
-        super().__init__('camera_publisher')
-        self.publisher_ = self.create_publisher(Image, 'metadrive/image', qos_profile=10)
+        super().__init__('obj_publisher')
+        self.publisher_ = self.create_publisher(BoundingBox3DArray, 'metadrive/object', qos_profile=10)
         timer_period = 0.05  # seconds
         context = zmq.Context().instance()
         self.socket = context.socket(zmq.PULL)
         self.socket.setsockopt(zmq.CONFLATE, 1)
         self.socket.set_hwm(5)
-        self.socket.connect("ipc:///tmp/rgb_camera") #configured in gamerunner.py
+        self.socket.connect("ipc:///tmp/obj") #configured in gamerunner.py
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.i = 0
 
     def timer_callback(self):
-        image_buffer_msg = self.socket.recv()
+        obj_buffer_msg = self.socket.recv()
         # read the first 32bit int as W
         # second as H to handle different resolutions
-        W, H = struct.unpack('ii', image_buffer_msg[:8]) 
+        num_obj = struct.unpack('i', obj_buffer_msg[:4])[0]
         # read the rest of the message as the image buffer
-        image_buffer = image_buffer_msg[8:]
-        image = np.frombuffer(image_buffer, dtype=np.uint8).reshape((H, W, 3))
-        image = image[:, :, :3] # remove the alpha channel
-        image = cv2.resize(image, (W, H))
-        img_msg = CameraPublisher.cv_bridge.cv2_to_imgmsg(image)
-        img_msg.header = self.get_msg_header()
-        self.publisher_.publish(img_msg)
+        obj_buffer = obj_buffer_msg[4:]
+        obj_infos = np.frombuffer(obj_buffer, dtype=np.float32).reshape((num_obj, 6))
+        bboxes = []
+        for obj_info in obj_infos:
+            obj_info = obj_info.tolist()
+            size = Vector3(x=obj_info[3], y=obj_info[4], z=obj_info[5])
+            pos = Point(x=obj_info[0], y=obj_info[1], z=0.0)
+            rot = Quaternion(x=0.0, y=0.0, z=np.sin(obj_info[2]/2.0), w=np.cos(obj_info[2]/2.0))
+            pose = Pose(position=pos, orientation=rot)
+            bbox = BoundingBox3D(center=pose, size=size)
+            bboxes.append(bbox)
+        obj_msg = BoundingBox3DArray(header = self.get_msg_header(), boxes = bboxes)
+        obj_msg.header = self.get_msg_header()
+        self.publisher_.publish(obj_msg)
         self.i += 1
 
     def get_msg_header(self):
@@ -64,14 +69,14 @@ class CameraPublisher(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    camera_publisher = CameraPublisher()
+    obj_publisher = ObjectPublisher()
 
-    rclpy.spin(camera_publisher)
+    rclpy.spin(obj_publisher)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    camera_publisher.destroy_node()
+    obj_publisher.destroy_node()
     rclpy.shutdown()
 
 

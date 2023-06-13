@@ -18,6 +18,12 @@ def generate_launch_description():
         name='lidar_bridge'
     )
     ld.add_action(lidar_node)
+    obj_node = Node(
+        package="test_bridge",
+        executable="obj_bridge",
+        name='obj_bridge'
+    )
+    ld.add_action(obj_node)
 
     pkg_dir = get_package_share_directory('test_bridge')
     rviz_node = Node(

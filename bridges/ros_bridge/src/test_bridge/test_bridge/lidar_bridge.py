@@ -25,7 +25,7 @@ class LidarPublisher(Node):
     def __init__(self):
         super().__init__('lidar_publisher')
         self.publisher_ = self.create_publisher(PointCloud2, 'metadrive/lidar', qos_profile=10)
-        timer_period = 0.1  # seconds
+        timer_period = 0.05  # seconds
         context = zmq.Context().instance()
         self.socket = context.socket(zmq.PULL)
         self.socket.setsockopt(zmq.CONFLATE, 1)
